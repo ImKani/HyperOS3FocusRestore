@@ -5,8 +5,6 @@ import android.os.Bundle;
 import android.os.Parcelable;
 import android.text.TextUtils;
 import android.util.Log;
-import android.view.View;
-import android.view.ViewGroup;
 import android.widget.RemoteViews;
 
 import java.lang.reflect.Method;
@@ -24,8 +22,6 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
     // Disable this if a KernelSU module already sets feature.island.debug=false.
     private static final boolean FORCE_ISLAND_OFF = true;
     private static final boolean FALLBACK_MAIN_RV_FOR_STATUS_BAR = true;
-    private static final boolean RESTORE_OS2_WIDTH_LIMIT = true;
-    private static final int OS2_PROMPT_MAX_WIDTH_DP = 170;
     private static final boolean FORCE_SHOULD_SHOW = false;
 
     private ClassLoader classLoader;
@@ -44,7 +40,6 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
         hookDynamicFeatureFlag();
         hookShowOnStatusBar();
         hookPromptViewSetData();
-        hookPromptWidth();
         hookPromptShouldShow();
         hookRemoteViewsErrors();
     }
@@ -147,55 +142,6 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
                     });
         } catch (Throwable t) {
             error("hookPromptViewSetData", t);
-        }
-    }
-
-    private void hookPromptWidth() {
-        if (!RESTORE_OS2_WIDTH_LIMIT) return;
-
-        try {
-            Class<?> view = XposedHelpers.findClass(
-                    "com.android.systemui.statusbar.phone.FocusedNotifPromptView",
-                    classLoader);
-            XposedBridge.hookAllMethods(view, "onFinishInflate", new XC_MethodHook() {
-                @Override
-                protected void afterHookedMethod(MethodHookParam param) {
-                    int maxWidth = dpToPx(param.thisObject, OS2_PROMPT_MAX_WIDTH_DP);
-                    int count = restoreWidthLimit((View) param.thisObject, maxWidth);
-                    log("restored OS2 prompt max width=" + maxWidth + "px (" + OS2_PROMPT_MAX_WIDTH_DP + "dp), views=" + count);
-                }
-            });
-        } catch (Throwable t) {
-            error("hookPromptWidth", t);
-        }
-    }
-
-    private static int restoreWidthLimit(View root, int maxWidth) {
-        int count = 0;
-        if (root == null) return count;
-        if ("com.android.systemui.statusbar.views.LimitedSizeFrameLayout".equals(
-                root.getClass().getName())) {
-            try {
-                XposedHelpers.setIntField(root, "mMaxWidth", maxWidth);
-                count++;
-            } catch (Throwable ignored) {
-            }
-        }
-        if (root instanceof ViewGroup) {
-            ViewGroup group = (ViewGroup) root;
-            for (int i = 0; i < group.getChildCount(); i++) {
-                count += restoreWidthLimit(group.getChildAt(i), maxWidth);
-            }
-        }
-        return count;
-    }
-
-    private static int dpToPx(Object target, int dp) {
-        try {
-            View view = (View) target;
-            return Math.round(dp * view.getResources().getDisplayMetrics().density);
-        } catch (Throwable ignored) {
-            return dp;
         }
     }
 
