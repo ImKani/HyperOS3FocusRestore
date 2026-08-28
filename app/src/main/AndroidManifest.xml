@@ -1,7 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <application android:theme="@android:style/Theme.Material.Light.NoActionBar" android:label="HyperOS3 Focus Restore" android:allowBackup="false">
+    <application android:theme="@android:style/Theme.Material.Light.NoActionBar" android:label="HyperOS3FocusRestore" android:allowBackup="false">
         <meta-data android:name="xposedmodule" android:value="true" />
-        <meta-data android:name="xposeddescription" android:value="Restore HyperOS focus notification path with diagnostics" />
+        <meta-data android:name="xposeddescription" android:value="恢复 HyperOS 3 的焦点通知状态栏显示" />
         <meta-data android:name="xposedminversion" android:value="93" />
         <meta-data android:name="xposedsharedprefs" android:value="true" />
     </application>

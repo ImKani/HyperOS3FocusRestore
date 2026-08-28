@@ -1,1 +1,1 @@
--keep class com.focusrestore.xposed.FocusRestoreHook { *; }
+-keep class com.hyperos3.focusrestore.HyperOS3FocusRestoreHook { *; }

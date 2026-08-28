@@ -1,4 +1,4 @@
-package com.focusrestore.xposed;
+package com.hyperos3.focusrestore;
 
 import android.app.Notification;
 import android.os.Bundle;
@@ -17,8 +17,8 @@ import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
-public final class FocusRestoreHook implements IXposedHookLoadPackage {
-    private static final String TAG = "FocusRestore";
+public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
+    private static final String TAG = "HyperOS3FocusRestore";
     private static final String SYSTEM_UI = "com.android.systemui";
 
     // Disable this if a KernelSU module already sets feature.island.debug=false.

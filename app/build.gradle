@@ -1,15 +1,21 @@
 plugins { id 'com.android.application' }
 
 android {
-    namespace 'com.focusrestore.xposed'
+    namespace 'com.hyperos3.focusrestore'
     compileSdk 35
 
     defaultConfig {
-        applicationId 'com.focusrestore.xposed'
+        applicationId 'com.hyperos3.focusrestore'
         minSdk 27
         targetSdk 35
         versionCode 1
         versionName '0.1.0'
+    }
+
+    applicationVariants.all { variant ->
+        variant.outputs.all {
+            outputFileName = "HyperOS3FocusRestore-${variant.versionName}-${variant.buildType.name}.apk"
+        }
     }
 }
 
