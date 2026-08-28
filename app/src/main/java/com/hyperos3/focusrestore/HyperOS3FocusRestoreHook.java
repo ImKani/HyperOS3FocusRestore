@@ -6,6 +6,8 @@ import android.os.Parcelable;
 import android.text.TextUtils;
 import android.util.Log;
 import android.widget.RemoteViews;
+import android.widget.TextView;
+import android.view.View;
 
 import java.lang.reflect.Method;
 
@@ -13,6 +15,7 @@ import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
+import de.robv.android.xposed.XSharedPreferences;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
 public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
@@ -21,10 +24,13 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
 
     // Disable this if a KernelSU module already sets feature.island.debug=false.
     private static final boolean FORCE_ISLAND_OFF = true;
-    private static final boolean FALLBACK_MAIN_RV_FOR_STATUS_BAR = true;
+    // OS3 rejects the legacy miui.focus.rv when used as contentRemoteViews.
+    private static final boolean FALLBACK_MAIN_RV_FOR_STATUS_BAR = false;
     private static final boolean FORCE_SHOULD_SHOW = false;
 
     private ClassLoader classLoader;
+    private XSharedPreferences settings;
+    private static final int DEFAULT_WIDTH_DP = 170;
 
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) {
@@ -34,6 +40,8 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
         }
 
         classLoader = lpparam.classLoader;
+        settings = new XSharedPreferences("com.hyperos3.focusrestore", SettingsActivity.PREFS_NAME);
+        settings.makeWorldReadable();
         log("loading in " + lpparam.packageName + "/" + lpparam.processName);
 
         hookIslandProperty();
@@ -132,18 +140,54 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
 
                         @Override
                         protected void afterHookedMethod(MethodHookParam param) {
-                            patchBean(param.args[0], "after setData");
-                            try {
-                                XposedHelpers.callMethod(param.thisObject, "updateRemoteViews");
-                            } catch (Throwable t) {
-                                error("updateRemoteViews after setData", t);
-                            }
+                            FocusData data = inspectBean(param.args[0]);
+                            log("after setData "
+                                    + (data == null ? "bean=null" : data.summary()));
+                            reloadSettings();
+                            applyTextWidth(param.thisObject);
+                            startNativeMarquee(param.thisObject);
                         }
                     });
         } catch (Throwable t) {
             error("hookPromptViewSetData", t);
         }
     }
+
+    private void reloadSettings() {
+        if (settings != null) settings.reload();
+    }
+
+    private void applyTextWidth(Object promptView) {
+        try {
+            Object value = XposedHelpers.getObjectField(promptView, "mContentText");
+            if (!(value instanceof TextView)) return;
+            TextView textView = (TextView) value;
+            boolean limited = settings != null && settings.getBoolean(SettingsActivity.KEY_LIMIT_WIDTH, false);
+            if (limited) {
+                int widthDp = settings.getInt(SettingsActivity.KEY_WIDTH_DP, DEFAULT_WIDTH_DP);
+                float density = textView.getResources().getDisplayMetrics().density;
+                textView.setMaxWidth(Math.round(widthDp * density));
+                log("applied manual focus text max width=" + widthDp + "dp");
+            } else {
+                log("using system focus text width");
+            }
+        } catch (Throwable t) {
+            error("applyTextWidth", t);
+        }
+    }
+
+    private void startNativeMarquee(Object promptView) {
+        try {
+            Object value = XposedHelpers.getObjectField(promptView, "mContentText");
+            if (value instanceof TextView && ((TextView) value).getVisibility() == View.VISIBLE) {
+                XposedHelpers.callMethod(value, "startMarqueeLocal");
+                log("started native focus marquee");
+            }
+        } catch (Throwable t) {
+            error("startNativeMarquee", t);
+        }
+    }
+
 
     private void hookPromptShouldShow() {
         try {
