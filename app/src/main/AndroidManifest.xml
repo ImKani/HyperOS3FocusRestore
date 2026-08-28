@@ -5,10 +5,15 @@
             android:exported="true"
             android:label="焦点通知设置">
             <intent-filter>
-                <action android:name="de.robv.android.xposed.action.MODULE_SETTINGS" />
-                <category android:name="android.intent.category.DEFAULT" />
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.INFO" />
             </intent-filter>
         </activity>
+        <provider
+            android:name=".SettingsProvider"
+            android:authorities="com.hyperos3.focusrestore.settings"
+            android:exported="true"
+            android:grantUriPermissions="false" />
         <meta-data android:name="xposedmodule" android:value="true" />
         <meta-data android:name="xposedscope" android:resource="@array/xposed_scope" />
         <meta-data android:name="xposeddescription" android:value="恢复 HyperOS 3 的焦点通知状态栏显示" />

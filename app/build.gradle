@@ -8,8 +8,15 @@ android {
         applicationId 'com.hyperos3.focusrestore'
         minSdk 27
         targetSdk 35
-        versionCode 8
-        versionName '0.3.2'
+        versionCode 15
+        versionName '0.3.9'
+    }
+
+    buildTypes {
+        release {
+            // Sign local release test builds so ADB can install them.
+            signingConfig signingConfigs.debug
+        }
     }
 
     applicationVariants.all { variant ->
