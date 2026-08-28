@@ -3,6 +3,8 @@ package com.hyperos3.focusrestore;
 import android.app.Notification;
 import android.os.Bundle;
 import android.os.Parcelable;
+import android.database.Cursor;
+import android.net.Uri;
 import android.text.TextUtils;
 import android.util.Log;
 import android.widget.RemoteViews;
@@ -32,6 +34,11 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
     private ClassLoader classLoader;
     private XSharedPreferences settings;
     private static final int DEFAULT_WIDTH_DP = 170;
+    private boolean limitWidth;
+    private int widthDp = DEFAULT_WIDTH_DP;
+    private int marqueeDelayMs = SettingsProvider.DEFAULT_MARQUEE_DELAY_MS;
+    private TextView pendingMarqueeText;
+    private Runnable pendingMarqueeRunnable;
 
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) {
@@ -41,14 +48,18 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
         }
 
         classLoader = lpparam.classLoader;
-        settings = new XSharedPreferences("com.hyperos3.focusrestore", SettingsActivity.PREFS_NAME);
+        settings = new XSharedPreferences("com.hyperos3.focusrestore", "com.hyperos3.focusrestore_preferences");
         settings.makeWorldReadable();
-        log("loading in " + lpparam.packageName + "/" + lpparam.processName);
+        reloadSettings();
+        readProviderSettings();
+        log("loading in " + lpparam.packageName + "/" + lpparam.processName
+                + " settings=" + describeSettings());
 
         hookIslandProperty();
         hookDynamicFeatureFlag();
         hookShowOnStatusBar();
         hookPromptViewSetData();
+        hookFocusedParentParams();
         hookPromptShouldShow();
         hookRemoteViewsErrors();
     }
@@ -146,7 +157,6 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
                                     + (data == null ? "bean=null" : data.summary()));
                             reloadSettings();
                             applyTextWidth(param.thisObject);
-                            startNativeMarquee(param.thisObject);
                         }
                     });
         } catch (Throwable t) {
@@ -156,6 +166,36 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
 
     private void reloadSettings() {
         if (settings != null) settings.reload();
+        readProviderSettings();
+    }
+
+    private void readProviderSettings() {
+        limitWidth = false;
+        widthDp = DEFAULT_WIDTH_DP;
+        try {
+            Object context = XposedHelpers.callStaticMethod(
+                    Class.forName("android.app.ActivityThread"), "currentApplication");
+            if (context == null) return;
+            Cursor cursor = ((android.content.Context) context).getContentResolver().query(
+                    SettingsProvider.URI, SettingsProvider.COLUMNS, null, null, null);
+            if (cursor != null) {
+                try {
+                    if (cursor.moveToFirst()) {
+                        limitWidth = cursor.getInt(0) != 0;
+                        widthDp = cursor.getInt(1);
+                        marqueeDelayMs = cursor.getInt(2);
+                    }
+                } finally {
+                    cursor.close();
+                }
+            }
+        } catch (Throwable t) {
+            error("readProviderSettings", t);
+        }
+    }
+
+    private String describeSettings() {
+        return "limit=" + limitWidth + " widthDp=" + widthDp + " delayMs=" + marqueeDelayMs;
     }
 
     private void applyTextWidth(Object promptView) {
@@ -163,11 +203,11 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
             Object value = XposedHelpers.getObjectField(promptView, "mContentText");
             if (!(value instanceof TextView)) return;
             TextView textView = (TextView) value;
-            boolean limited = settings != null && settings.getBoolean(SettingsActivity.KEY_LIMIT_WIDTH, false);
+            boolean limited = limitWidth;
             if (limited) {
-                int widthDp = settings.getInt(SettingsActivity.KEY_WIDTH_DP, DEFAULT_WIDTH_DP);
+                int configuredWidthDp = widthDp;
                 float density = textView.getResources().getDisplayMetrics().density;
-                int widthPx = Math.round(widthDp * density);
+                int widthPx = Math.round(configuredWidthDp * density);
                 textView.setMaxWidth(widthPx);
                 ViewGroup.LayoutParams params = textView.getLayoutParams();
                 if (params != null) {
@@ -187,15 +227,95 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
     private void startNativeMarquee(Object promptView) {
         try {
             Object value = XposedHelpers.getObjectField(promptView, "mContentText");
-            if (value instanceof TextView && ((TextView) value).getVisibility() == View.VISIBLE) {
-                XposedHelpers.callMethod(value, "startMarqueeLocal");
-                log("started native focus marquee");
-            }
+            if (value instanceof TextView) startNativeMarquee((TextView) value);
         } catch (Throwable t) {
             error("startNativeMarquee", t);
         }
     }
 
+    private void startNativeMarquee(TextView textView) {
+        try {
+            if (textView.getVisibility() != View.VISIBLE) return;
+            textView.setSingleLine(true);
+            textView.setHorizontallyScrolling(true);
+            textView.setEllipsize(TextUtils.TruncateAt.MARQUEE);
+            textView.setFocusable(true);
+            textView.setFocusableInTouchMode(true);
+            textView.setSelected(true);
+            textView.setMarqueeRepeatLimit(1);
+            XposedHelpers.callMethod(textView, "startMarqueeLocal");
+            log("started native focus marquee width=" + textView.getWidth()
+                    + " measured=" + textView.getMeasuredWidth()
+                    + " selected=" + textView.isSelected()
+                    + " focused=" + textView.isFocused()
+                    + " textWidth=" + textView.getPaint().measureText(textView.getText().toString()));
+        } catch (Throwable t) {
+            error("startNativeMarqueeText", t);
+        }
+    }
+
+    private void scheduleNativeMarquee(Object promptView) {
+        try {
+            Object value = XposedHelpers.getObjectField(promptView, "mContentText");
+            if (!(value instanceof TextView)) return;
+            final TextView textView = (TextView) value;
+            if (pendingMarqueeText != null && pendingMarqueeRunnable != null) {
+                pendingMarqueeText.removeCallbacks(pendingMarqueeRunnable);
+            }
+            pendingMarqueeText = textView;
+            pendingMarqueeRunnable = new Runnable() {
+                @Override public void run() {
+                    startNativeMarquee(textView);
+                }
+            };
+            textView.postDelayed(pendingMarqueeRunnable,
+                    Math.max(0, Math.min(5000, marqueeDelayMs)));
+            log("scheduled native focus marquee delayMs=" + marqueeDelayMs);
+        } catch (Throwable t) {
+            error("scheduleNativeMarquee", t);
+        }
+    }
+
+    private void hookFocusedParentParams() {
+        try {
+            Class<?> fragment = XposedHelpers.findClass(
+                    "com.android.systemui.statusbar.phone.MiuiCollapsedStatusBarFragment",
+                    classLoader);
+            XposedHelpers.findAndHookMethod(fragment, "updateFocusedParentParams", int.class,
+                    new XC_MethodHook() {
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) {
+                            applyParentWidth(param.thisObject);
+                        }
+                    });
+        } catch (Throwable t) {
+            error("hookFocusedParentParams", t);
+        }
+    }
+
+    private void applyParentWidth(Object fragment) {
+        try {
+            reloadSettings();
+            boolean limited = limitWidth;
+            Object value = XposedHelpers.getObjectField(fragment, "mFocusedNotifParent");
+            if (!(value instanceof View)) return;
+            View parent = (View) value;
+            ViewGroup.LayoutParams params = parent.getLayoutParams();
+            if (params == null) return;
+            if (limited) {
+                int configuredWidthDp = widthDp;
+                params.width = Math.round(configuredWidthDp * parent.getResources().getDisplayMetrics().density);
+                parent.setLayoutParams(params);
+                log("applied manual focus parent width=" + configuredWidthDp + "dp");
+            } else if (params.width != ViewGroup.LayoutParams.WRAP_CONTENT) {
+                params.width = ViewGroup.LayoutParams.WRAP_CONTENT;
+                parent.setLayoutParams(params);
+                log("restored system focus parent width");
+            }
+        } catch (Throwable t) {
+            error("applyParentWidth", t);
+        }
+    }
 
     private void hookPromptShouldShow() {
         try {
@@ -246,6 +366,7 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
                         error("updateRemoteViews throwable", param.getThrowable());
                     } else {
                         log("updateRemoteViews end");
+                        scheduleNativeMarquee(param.thisObject);
                     }
                 }
             });

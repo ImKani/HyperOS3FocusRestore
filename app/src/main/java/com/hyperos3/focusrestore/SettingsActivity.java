@@ -2,6 +2,7 @@ package com.hyperos3.focusrestore;
 
 import android.app.Activity;
 import android.content.SharedPreferences;
+import android.content.ContentResolver;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.view.Gravity;
@@ -13,10 +14,13 @@ import android.widget.SeekBar;
 import android.widget.TextView;
 
 public final class SettingsActivity extends Activity {
-    static final String PREFS_NAME = "focus_restore_settings";
+    // LSPosed XSharedPreferences reads the package default preferences file.
+    static final String PREFS_NAME = "com.hyperos3.focusrestore_preferences";
     static final String KEY_LIMIT_WIDTH = "limit_text_width";
     static final String KEY_WIDTH_DP = "text_width_dp";
+    static final String KEY_MARQUEE_DELAY_MS = "marquee_delay_ms";
     static final int DEFAULT_WIDTH_DP = 170;
+    static final int DEFAULT_MARQUEE_DELAY_MS = 500;
     private static final int MIN_WIDTH_DP = 80;
     private static final int MAX_WIDTH_DP = 400;
 
@@ -26,6 +30,8 @@ public final class SettingsActivity extends Activity {
     private SeekBar widthSeekBar;
     private TextView widthValue;
     private TextView restartHint;
+    private SeekBar delaySeekBar;
+    private TextView delayValue;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -95,6 +101,24 @@ public final class SettingsActivity extends Activity {
         range.addView(maxRange, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         root.addView(range, matchWrap(dp(24)));
 
+        TextView delayLabel = text("滚动启动延迟", 15, Color.rgb(60, 64, 67));
+        delayLabel.setTypeface(delayLabel.getTypeface(), 1);
+        root.addView(delayLabel, matchWrap(dp(4)));
+        LinearLayout delayRow = new LinearLayout(this);
+        delayRow.setGravity(Gravity.CENTER_VERTICAL);
+        delayValue = text("0.5 秒", 15, Color.rgb(26, 115, 232));
+        delayValue.setTypeface(delayValue.getTypeface(), 1);
+        delayRow.addView(delayValue, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        delaySeekBar = new SeekBar(this);
+        delaySeekBar.setMax(50);
+        delaySeekBar.setProgress(5);
+        delayRow.addView(delaySeekBar, new LinearLayout.LayoutParams(dp(220), LinearLayout.LayoutParams.WRAP_CONTENT));
+        root.addView(delayRow, matchWrap(dp(4)));
+        TextView delayRange = text("0 秒", 12, Color.rgb(117, 117, 117));
+        delayRange.setGravity(Gravity.END);
+        delayRange.setText("0 秒                         5 秒");
+        root.addView(delayRange, matchWrap(dp(24)));
+
         restartHint = text("设置已保存。重启 SystemUI 或设备后生效。", 14, Color.rgb(95, 99, 104));
         restartHint.setPadding(dp(12), dp(12), dp(12), dp(12));
         restartHint.setBackgroundColor(Color.rgb(232, 240, 254));
@@ -103,7 +127,7 @@ public final class SettingsActivity extends Activity {
         modes.setOnCheckedChangeListener((group, checkedId) -> {
             boolean manual = checkedId == manualMode.getId();
             setManualEnabled(manual);
-            preferences.edit().putBoolean(KEY_LIMIT_WIDTH, manual).apply();
+            preferences.edit().putBoolean(KEY_LIMIT_WIDTH, manual).commit();
             showSaved();
         });
         widthSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
@@ -112,11 +136,20 @@ public final class SettingsActivity extends Activity {
                 int width = MIN_WIDTH_DP + progress;
                 widthValue.setText(width + " dp");
                 if (fromUser) {
-                    preferences.edit().putInt(KEY_WIDTH_DP, width).apply();
+                    preferences.edit().putInt(KEY_WIDTH_DP, width).commit();
                     showSaved();
                 }
             }
 
+            @Override public void onStartTrackingTouch(SeekBar seekBar) { }
+            @Override public void onStopTrackingTouch(SeekBar seekBar) { }
+        });
+        delaySeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                int delay = progress * 100;
+                delayValue.setText(String.format(java.util.Locale.US, "%.1f 秒", delay / 1000f));
+                if (fromUser) preferences.edit().putInt(KEY_MARQUEE_DELAY_MS, delay).commit();
+            }
             @Override public void onStartTrackingTouch(SeekBar seekBar) { }
             @Override public void onStopTrackingTouch(SeekBar seekBar) { }
         });
@@ -126,7 +159,10 @@ public final class SettingsActivity extends Activity {
     private void loadSettings() {
         boolean manual = preferences.getBoolean(KEY_LIMIT_WIDTH, false);
         int width = clamp(preferences.getInt(KEY_WIDTH_DP, DEFAULT_WIDTH_DP));
+        int delay = Math.max(0, Math.min(5000, preferences.getInt(KEY_MARQUEE_DELAY_MS, DEFAULT_MARQUEE_DELAY_MS)));
         widthSeekBar.setProgress(width - MIN_WIDTH_DP);
+        delaySeekBar.setProgress(delay / 100);
+        delayValue.setText(String.format(java.util.Locale.US, "%.1f 秒", delay / 1000f));
         if (manual) {
             manualMode.setChecked(true);
         } else {
