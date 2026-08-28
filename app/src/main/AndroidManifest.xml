@@ -1,5 +1,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application android:theme="@android:style/Theme.Material.Light.NoActionBar" android:label="HyperOS3FocusRestore" android:allowBackup="false">
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="true"
+            android:label="焦点通知设置">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
         <meta-data android:name="xposedmodule" android:value="true" />
         <meta-data android:name="xposedscope" android:resource="@array/xposed_scope" />
         <meta-data android:name="xposeddescription" android:value="恢复 HyperOS 3 的焦点通知状态栏显示" />
