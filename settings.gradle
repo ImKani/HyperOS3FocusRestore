@@ -7,5 +7,5 @@ dependencyResolutionManagement {
         maven { url 'https://api.xposed.info/' }
     }
 }
-rootProject.name = "FocusRestoreLSPosed"
+rootProject.name = "HyperOS3FocusRestore"
 include(":app")
