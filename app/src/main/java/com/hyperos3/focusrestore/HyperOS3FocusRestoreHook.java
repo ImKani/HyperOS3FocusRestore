@@ -8,6 +8,7 @@ import android.util.Log;
 import android.widget.RemoteViews;
 import android.widget.TextView;
 import android.view.View;
+import android.view.ViewGroup;
 
 import java.lang.reflect.Method;
 
@@ -166,8 +167,15 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
             if (limited) {
                 int widthDp = settings.getInt(SettingsActivity.KEY_WIDTH_DP, DEFAULT_WIDTH_DP);
                 float density = textView.getResources().getDisplayMetrics().density;
-                textView.setMaxWidth(Math.round(widthDp * density));
-                log("applied manual focus text max width=" + widthDp + "dp");
+                int widthPx = Math.round(widthDp * density);
+                textView.setMaxWidth(widthPx);
+                ViewGroup.LayoutParams params = textView.getLayoutParams();
+                if (params != null) {
+                    params.width = widthPx;
+                    textView.setLayoutParams(params);
+                }
+                textView.requestLayout();
+                log("applied manual focus text width=" + widthDp + "dp px=" + widthPx);
             } else {
                 log("using system focus text width");
             }
