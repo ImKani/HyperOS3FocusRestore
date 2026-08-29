@@ -9,7 +9,7 @@ import android.net.Uri;
 public final class SettingsProvider extends ContentProvider {
     static final String AUTHORITY = "com.hyperos3.focusrestore.settings";
     static final Uri URI = Uri.parse("content://" + AUTHORITY + "/config");
-    static final String[] COLUMNS = {"limit_text_width", "text_width_dp", "marquee_delay_ms"};
+    static final String[] COLUMNS = {"limit_text_width", "text_width_dp", "marquee_delay_ms", "compat_retry"};
     static final String KEY_MARQUEE_DELAY_MS = "marquee_delay_ms";
     static final int DEFAULT_MARQUEE_DELAY_MS = 500;
 
@@ -22,17 +22,14 @@ public final class SettingsProvider extends ContentProvider {
     public Cursor query(Uri uri, String[] projection, String selection,
                         String[] selectionArgs, String sortOrder) {
         if (!URI.equals(uri) || getContext() == null) return null;
-        boolean limit = getContext().getSharedPreferences(
-                SettingsActivity.PREFS_NAME, 0)
-                .getBoolean(SettingsActivity.KEY_LIMIT_WIDTH, false);
-        int width = getContext().getSharedPreferences(
-                SettingsActivity.PREFS_NAME, 0)
-                .getInt(SettingsActivity.KEY_WIDTH_DP, SettingsActivity.DEFAULT_WIDTH_DP);
-        int delay = getContext().getSharedPreferences(
-                SettingsActivity.PREFS_NAME, 0)
-                .getInt(KEY_MARQUEE_DELAY_MS, DEFAULT_MARQUEE_DELAY_MS);
+        android.content.SharedPreferences preferences = getContext().getSharedPreferences(
+                SettingsActivity.PREFS_NAME, 0);
+        boolean limit = preferences.getBoolean(SettingsActivity.KEY_LIMIT_WIDTH, false);
+        int width = preferences.getInt(SettingsActivity.KEY_WIDTH_DP, SettingsActivity.DEFAULT_WIDTH_DP);
+        int delay = preferences.getInt(KEY_MARQUEE_DELAY_MS, DEFAULT_MARQUEE_DELAY_MS);
+        boolean compatRetry = preferences.getBoolean(SettingsActivity.KEY_COMPAT_RETRY, false);
         MatrixCursor cursor = new MatrixCursor(COLUMNS);
-        cursor.addRow(new Object[]{limit ? 1 : 0, width, delay});
+        cursor.addRow(new Object[]{limit ? 1 : 0, width, delay, compatRetry ? 1 : 0});
         return cursor;
     }
 
