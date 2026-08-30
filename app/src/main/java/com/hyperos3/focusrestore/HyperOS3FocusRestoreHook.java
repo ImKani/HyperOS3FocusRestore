@@ -39,9 +39,10 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
     private static final int MARQUEE_REPEAT_LIMIT = -1;
     private int marqueeDelayMs = SettingsProvider.DEFAULT_MARQUEE_DELAY_MS;
     private boolean compatRetry;
-    private boolean limitWidth;
+    private boolean limitWidth = true;
     private int widthDp = 160;
     private boolean islandCompat;
+    private int providerSettingsState = -1;
     private TextView pendingMarqueeText;
     private Runnable pendingMarqueeRunnable;
 
@@ -67,6 +68,7 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
         hookFocusedParentParams();
         hookFocusedTextMarquee();
         hookPromptShouldShow();
+        hookDisableConvertedFocusClick();
         hookRemoteViewsErrors();
     }
 
@@ -205,24 +207,45 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
         try {
             Object context = XposedHelpers.callStaticMethod(
                     Class.forName("android.app.ActivityThread"), "currentApplication");
-            if (context == null) return;
+            if (context == null) {
+                logProviderSettingsState(false, "currentApplication unavailable");
+                return;
+            }
             Cursor cursor = ((android.content.Context) context).getContentResolver().query(
                     SettingsProvider.URI, SettingsProvider.COLUMNS, null, null, null);
-            if (cursor != null) {
-                try {
-                    if (cursor.moveToFirst()) {
-                        limitWidth = cursor.getInt(0) != 0;
-                        widthDp = cursor.getInt(1);
-                        marqueeDelayMs = cursor.getInt(2);
-                        compatRetry = cursor.getColumnCount() > 3 && cursor.getInt(3) != 0;
-                        islandCompat = cursor.getColumnCount() > 4 && cursor.getInt(4) != 0;
-                    }
-                } finally {
-                    cursor.close();
+            if (cursor == null) {
+                logProviderSettingsState(false, "provider query returned null");
+                return;
+            }
+            try {
+                if (!cursor.moveToFirst()) {
+                    logProviderSettingsState(false, "provider query returned no row");
+                    return;
                 }
+                limitWidth = cursor.getInt(0) != 0;
+                widthDp = cursor.getInt(1);
+                marqueeDelayMs = cursor.getInt(2);
+                compatRetry = cursor.getColumnCount() > 3 && cursor.getInt(3) != 0;
+                islandCompat = cursor.getColumnCount() > 4 && cursor.getInt(4) != 0;
+                logProviderSettingsState(true, null);
+            } finally {
+                cursor.close();
             }
         } catch (Throwable t) {
+            logProviderSettingsState(false, t.getClass().getSimpleName());
             error("readProviderSettings", t);
+        }
+    }
+
+    private void logProviderSettingsState(boolean available, String reason) {
+        int state = available ? 1 : 0;
+        if (providerSettingsState == state) return;
+        providerSettingsState = state;
+        if (available) {
+            log("provider settings read success: " + describeSettings());
+        } else {
+            log("provider settings unavailable: using defaults"
+                    + (TextUtils.isEmpty(reason) ? "" : " (" + reason + ")"));
         }
     }
 
@@ -435,6 +458,28 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
         }
     }
 
+    private void hookDisableConvertedFocusClick() {
+        try {
+            Class<?> promptView = XposedHelpers.findClass(
+                    "com.android.systemui.statusbar.phone.FocusedNotifPromptView", classLoader);
+            XposedHelpers.findAndHookMethod(promptView, "onFocusNotifPromptClicked",
+                    new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            if (!islandCompat) return;
+                            FocusData data = inspectBean(getField(param.thisObject, "mData"));
+                            if (hasConvertibleIslandContent(data)) {
+                                param.setResult(null);
+                                log("ignored converted focus click key=" + data.key);
+                            }
+                        }
+                    });
+            log("disabled converted focus click");
+        } catch (Throwable t) {
+            error("hookDisableConvertedFocusClick", t);
+        }
+    }
+
     private void hookRemoteViewsErrors() {
         try {
             Class<?> view = XposedHelpers.findClass(
@@ -533,7 +578,12 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
             // Older HyperOS focus payloads (notably SMS verification) use protocol 1.
             if (root.optInt("protocol", 3) == 1 || "verifyCode".equals(root.optString("scene"))) {
                 String legacy = joinTexts(root, "protocol1", "title", "desc1", "desc2");
-                return TextUtils.isEmpty(legacy) ? null : new IslandText(legacy, "protocol1:" + root.optString("scene", "legacy"));
+                if (!TextUtils.isEmpty(legacy)) {
+                    log("island content source=protocol1:" + root.optString("scene", "legacy")
+                            + " text=" + legacy);
+                    return new IslandText(legacy, "protocol1:" + root.optString("scene", "legacy"));
+                }
+                return null;
             }
 
             JSONObject base = v2.optJSONObject("baseInfo");
@@ -613,7 +663,9 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
                 result = cleanText(root.optString("ticker", null));
                 if (!TextUtils.isEmpty(result)) source = "custom.ticker";
             }
-            return TextUtils.isEmpty(result) ? null : new IslandText(result, source);
+            if (TextUtils.isEmpty(result)) return null;
+            log("island content source=" + source + " text=" + result);
+            return new IslandText(result, source);
         } catch (Throwable t) {
             log("island param parse failed");
             return null;

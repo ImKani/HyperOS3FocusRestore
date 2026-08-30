@@ -28,7 +28,7 @@ public final class SettingsActivity extends Activity {
     static final String KEY_MARQUEE_DELAY_MS = "marquee_delay_ms";
     static final String KEY_COMPAT_RETRY = "compat_retry";
     static final String KEY_ISLAND_COMPAT = "island_compat";
-    static final int DEFAULT_MARQUEE_DELAY_MS = 500;
+    static final int DEFAULT_MARQUEE_DELAY_MS = 200;
 
     private SharedPreferences preferences;
     private TextView restartHint;
@@ -103,13 +103,13 @@ public final class SettingsActivity extends Activity {
         TextView delayLabel = text("滚动启动延迟", 15, Color.rgb(60, 64, 67));
         delayLabel.setTypeface(delayLabel.getTypeface(), 1);
         delayValueRow.addView(delayLabel, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        delayValue = text("0.5 秒", 15, Color.rgb(26, 115, 232));
+        delayValue = text("0.2 秒", 15, Color.rgb(26, 115, 232));
         delayValue.setTypeface(delayValue.getTypeface(), 1);
         delayValueRow.addView(delayValue);
         root.addView(delayValueRow, matchWrap(dp(2)));
         delaySeekBar = new SeekBar(this);
         delaySeekBar.setMax(50);
-        delaySeekBar.setProgress(5);
+        delaySeekBar.setProgress(2);
         root.addView(delaySeekBar, matchWrap(dp(2)));
         LinearLayout delayRange = new LinearLayout(this);
         TextView minDelay = text("0 秒", 12, Color.rgb(117, 117, 117));
@@ -134,6 +134,10 @@ public final class SettingsActivity extends Activity {
         TextView islandHint = text("默认关闭：只处理原生焦点通知。开启后关闭原生超级岛，并尝试提取取件码、配送进度、检票口等主体内容显示到焦点通知。", 13, Color.rgb(95, 99, 104));
         islandHint.setPadding(dp(12), 0, dp(12), dp(8));
         root.addView(islandHint, matchWrap(dp(8)));
+
+        TextView stageHint = text("系统灵动舞台隐藏请使用其他工具，本模块不负责隐藏。", 13, Color.rgb(95, 99, 104));
+        stageHint.setPadding(dp(12), 0, dp(12), dp(8));
+        root.addView(stageHint, matchWrap(dp(8)));
 
         saveButton = new Button(this);
         saveButton.setText("保存设置");
@@ -195,7 +199,7 @@ public final class SettingsActivity extends Activity {
     }
 
     private void loadSettings() {
-        boolean manual = preferences.getBoolean(KEY_LIMIT_WIDTH, false);
+        boolean manual = preferences.getBoolean(KEY_LIMIT_WIDTH, true);
         int width = Math.max(MIN_WIDTH_DP, Math.min(MAX_WIDTH_DP, preferences.getInt(KEY_WIDTH_DP, DEFAULT_WIDTH_DP)));
         int delay = Math.max(0, Math.min(5000, preferences.getInt(KEY_MARQUEE_DELAY_MS, DEFAULT_MARQUEE_DELAY_MS)));
         boolean compatRetry = preferences.getBoolean(KEY_COMPAT_RETRY, false);
@@ -227,17 +231,6 @@ public final class SettingsActivity extends Activity {
                 .putBoolean(KEY_ISLAND_COMPAT, pendingIslandCompat)
                 .commit();
         restartHint.setText("设置已保存。请重启 SystemUI 或设备后生效。");
-    }
-
-    private void configureLightSystemBars(Window window) {
-        window.setStatusBarColor(Color.rgb(248, 249, 250));
-        window.setNavigationBarColor(Color.rgb(248, 249, 250));
-        if (Build.VERSION.SDK_INT >= 23) {
-            int flags = window.getDecorView().getSystemUiVisibility();
-            flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
-            if (Build.VERSION.SDK_INT >= 26) flags |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
-            window.getDecorView().setSystemUiVisibility(flags);
-        }
     }
 
     private void configureLightSystemBars(Window window) {
