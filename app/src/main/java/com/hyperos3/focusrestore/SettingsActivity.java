@@ -139,6 +139,10 @@ public final class SettingsActivity extends Activity {
         stageHint.setPadding(dp(12), 0, dp(12), dp(8));
         root.addView(stageHint, matchWrap(dp(8)));
 
+        TextView authorHint = text("制作者：ImKani\n酷安主页：https://www.coolapk.com/u/1205658\nGitHub：https://github.com/ImKani/HyperOS3FocusRestore\n本模块由 AI 辅助反编译分析与编写，存在 ROM 版本差异、系统崩溃、显示异常、功能失效等不可控风险。请自行备份并承担使用风险。", 12, Color.rgb(95, 99, 104));
+        authorHint.setPadding(dp(12), dp(8), dp(12), dp(12));
+        root.addView(authorHint, matchWrap(dp(8)));
+
         saveButton = new Button(this);
         saveButton.setText("保存设置");
         saveButton.setTextColor(Color.WHITE);
