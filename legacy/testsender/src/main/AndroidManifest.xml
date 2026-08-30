@@ -1,0 +1,11 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <application android:theme="@android:style/Theme.Material.Light.NoActionBar" android:label="HyperOS3FocusRestore 测试发送器" android:allowBackup="false">
+        <activity android:name=".TestSenderActivity" android:exported="true" android:label="测试发送器">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

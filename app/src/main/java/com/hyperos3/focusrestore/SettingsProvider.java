@@ -9,7 +9,7 @@ import android.net.Uri;
 public final class SettingsProvider extends ContentProvider {
     static final String AUTHORITY = "com.hyperos3.focusrestore.settings";
     static final Uri URI = Uri.parse("content://" + AUTHORITY + "/config");
-    static final String[] COLUMNS = {"limit_text_width", "text_width_dp", "marquee_delay_ms", "compat_retry"};
+    static final String[] COLUMNS = {"limit_text_width", "text_width_dp", "marquee_delay_ms", "compat_retry", "island_compat"};
     static final String KEY_MARQUEE_DELAY_MS = "marquee_delay_ms";
     static final int DEFAULT_MARQUEE_DELAY_MS = 500;
 
@@ -28,8 +28,10 @@ public final class SettingsProvider extends ContentProvider {
         int width = preferences.getInt(SettingsActivity.KEY_WIDTH_DP, SettingsActivity.DEFAULT_WIDTH_DP);
         int delay = preferences.getInt(KEY_MARQUEE_DELAY_MS, DEFAULT_MARQUEE_DELAY_MS);
         boolean compatRetry = preferences.getBoolean(SettingsActivity.KEY_COMPAT_RETRY, false);
+        boolean islandCompat = preferences.getBoolean(SettingsActivity.KEY_ISLAND_COMPAT, false);
         MatrixCursor cursor = new MatrixCursor(COLUMNS);
-        cursor.addRow(new Object[]{limit ? 1 : 0, width, delay, compatRetry ? 1 : 0});
+        cursor.addRow(new Object[]{limit ? 1 : 0, width, delay, compatRetry ? 1 : 0,
+                islandCompat ? 1 : 0});
         return cursor;
     }
 

@@ -1,0 +1,24 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'com.hyperos3.focusrestore.testsender'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.hyperos3.focusrestore.testsender'
+        minSdk 27
+        targetSdk 35
+        versionCode 1
+        versionName '1.0.0'
+    }
+
+    buildTypes {
+        release { signingConfig signingConfigs.debug }
+    }
+
+    applicationVariants.all { variant ->
+        variant.outputs.all {
+            outputFileName = "HyperOS3FocusRestore-TestSender-${variant.versionName}-${variant.buildType.name}.apk"
+        }
+    }
+}

@@ -12,6 +12,7 @@ import android.view.Window;
 import android.os.Build;
 import android.widget.Button;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.Switch;
 import android.widget.TextView;
@@ -21,26 +22,29 @@ public final class SettingsActivity extends Activity {
     static final String PREFS_NAME = "com.hyperos3.focusrestore_preferences";
     static final String KEY_LIMIT_WIDTH = "limit_text_width";
     static final String KEY_WIDTH_DP = "text_width_dp";
+    static final int DEFAULT_WIDTH_DP = 160;
+    static final int MIN_WIDTH_DP = 80;
+    static final int MAX_WIDTH_DP = 400;
     static final String KEY_MARQUEE_DELAY_MS = "marquee_delay_ms";
     static final String KEY_COMPAT_RETRY = "compat_retry";
-    static final int DEFAULT_WIDTH_DP = 160;
+    static final String KEY_ISLAND_COMPAT = "island_compat";
     static final int DEFAULT_MARQUEE_DELAY_MS = 500;
-    private static final int MIN_WIDTH_DP = 80;
-    private static final int MAX_WIDTH_DP = 400;
 
     private SharedPreferences preferences;
+    private TextView restartHint;
     private Switch manualWidthSwitch;
     private SeekBar widthSeekBar;
     private TextView widthValue;
-    private TextView restartHint;
     private SeekBar delaySeekBar;
     private TextView delayValue;
     private Switch compatRetrySwitch;
+    private Switch islandCompatSwitch;
     private Button saveButton;
+    private int pendingDelayMs;
     private boolean pendingManual;
     private int pendingWidthDp;
-    private int pendingDelayMs;
     private boolean pendingCompatRetry;
+    private boolean pendingIslandCompat;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -54,6 +58,7 @@ public final class SettingsActivity extends Activity {
 
     private View createContent() {
         int padding = dp(20);
+        ScrollView scroll = new ScrollView(this);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(padding, dp(16), padding, padding);
@@ -68,35 +73,30 @@ public final class SettingsActivity extends Activity {
         title.setTypeface(title.getTypeface(), 1);
         root.addView(title, matchWrap(dp(8)));
 
-        TextView subtitle = text("控制状态栏焦点歌词的最大显示宽度", 14, Color.rgb(95, 99, 104));
-        root.addView(subtitle, matchWrap(dp(24)));
+        TextView subtitle = text("原生焦点歌词可限制文字宽度；超级岛和 RemoteViews 保留系统原生布局", 14, Color.rgb(95, 99, 104));
+        root.addView(subtitle, matchWrap(dp(20)));
 
         manualWidthSwitch = new Switch(this);
-        manualWidthSwitch.setText("启用手动宽度限制");
+        manualWidthSwitch.setText("限制原生焦点歌词宽度");
         manualWidthSwitch.setTextSize(16);
-        root.addView(manualWidthSwitch, matchWrap(dp(12)));
+        root.addView(manualWidthSwitch, matchWrap(dp(10)));
 
-        LinearLayout valueRow = new LinearLayout(this);
-        valueRow.setGravity(Gravity.CENTER_VERTICAL);
-        TextView widthLabel = text("最大宽度", 15, Color.rgb(60, 64, 67));
-        valueRow.addView(widthLabel, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        widthValue = text("170 dp", 15, Color.rgb(26, 115, 232));
+        LinearLayout widthRow = new LinearLayout(this);
+        widthRow.setGravity(Gravity.CENTER_VERTICAL);
+        widthRow.addView(text("最大文字宽度", 15, Color.rgb(60, 64, 67)), new LinearLayout.LayoutParams(0, -2, 1f));
+        widthValue = text("160 dp", 15, Color.rgb(26, 115, 232));
         widthValue.setTypeface(widthValue.getTypeface(), 1);
-        valueRow.addView(widthValue);
-        root.addView(valueRow, matchWrap(dp(4)));
-
+        widthRow.addView(widthValue);
+        root.addView(widthRow, matchWrap(dp(2)));
         widthSeekBar = new SeekBar(this);
         widthSeekBar.setMax(MAX_WIDTH_DP - MIN_WIDTH_DP);
-        root.addView(widthSeekBar, matchWrap(dp(6)));
-
-        LinearLayout range = new LinearLayout(this);
-        range.setGravity(Gravity.CENTER_VERTICAL);
-        TextView minRange = text("80 dp", 12, Color.rgb(117, 117, 117));
-        TextView maxRange = text("400 dp", 12, Color.rgb(117, 117, 117));
-        range.addView(minRange, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        maxRange.setGravity(Gravity.END);
-        range.addView(maxRange, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        root.addView(range, matchWrap(dp(24)));
+        root.addView(widthSeekBar, matchWrap(dp(4)));
+        LinearLayout widthRange = new LinearLayout(this);
+        widthRange.addView(text("80 dp", 12, Color.GRAY), new LinearLayout.LayoutParams(0, -2, 1f));
+        TextView maxWidth = text("400 dp", 12, Color.GRAY);
+        maxWidth.setGravity(Gravity.END);
+        widthRange.addView(maxWidth, new LinearLayout.LayoutParams(0, -2, 1f));
+        root.addView(widthRange, matchWrap(dp(18)));
 
         LinearLayout delayValueRow = new LinearLayout(this);
         delayValueRow.setGravity(Gravity.CENTER_VERTICAL);
@@ -127,6 +127,14 @@ public final class SettingsActivity extends Activity {
         retryHint.setPadding(dp(12), 0, dp(12), dp(8));
         root.addView(retryHint, matchWrap(dp(8)));
 
+        islandCompatSwitch = new Switch(this);
+        islandCompatSwitch.setText("超级岛内容转焦点通知");
+        islandCompatSwitch.setTextSize(16);
+        root.addView(islandCompatSwitch, matchWrap(dp(2)));
+        TextView islandHint = text("默认关闭：只处理原生焦点通知。开启后关闭原生超级岛，并尝试提取取件码、配送进度、检票口等主体内容显示到焦点通知。", 13, Color.rgb(95, 99, 104));
+        islandHint.setPadding(dp(12), 0, dp(12), dp(8));
+        root.addView(islandHint, matchWrap(dp(8)));
+
         saveButton = new Button(this);
         saveButton.setText("保存设置");
         saveButton.setTextColor(Color.WHITE);
@@ -144,13 +152,13 @@ public final class SettingsActivity extends Activity {
         restartHint.setBackgroundColor(Color.rgb(232, 240, 254));
         root.addView(restartHint, matchWrap(0));
 
+        scroll.addView(root);
+
         manualWidthSwitch.setOnCheckedChangeListener((button, checked) -> {
             pendingManual = checked;
-            setManualEnabled(checked);
             showPending();
         });
         widthSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 int width = MIN_WIDTH_DP + progress;
                 widthValue.setText(width + " dp");
@@ -159,12 +167,15 @@ public final class SettingsActivity extends Activity {
                     showPending();
                 }
             }
-
-            @Override public void onStartTrackingTouch(SeekBar seekBar) { }
-            @Override public void onStopTrackingTouch(SeekBar seekBar) { }
+            public void onStartTrackingTouch(SeekBar seekBar) { }
+            public void onStopTrackingTouch(SeekBar seekBar) { }
         });
         compatRetrySwitch.setOnCheckedChangeListener((button, checked) -> {
             pendingCompatRetry = checked;
+            showPending();
+        });
+        islandCompatSwitch.setOnCheckedChangeListener((button, checked) -> {
+            pendingIslandCompat = checked;
             showPending();
         });
         saveButton.setOnClickListener(view -> saveSettings());
@@ -180,30 +191,27 @@ public final class SettingsActivity extends Activity {
             @Override public void onStartTrackingTouch(SeekBar seekBar) { }
             @Override public void onStopTrackingTouch(SeekBar seekBar) { }
         });
-        return root;
+        return scroll;
     }
 
     private void loadSettings() {
         boolean manual = preferences.getBoolean(KEY_LIMIT_WIDTH, false);
-        int width = clamp(preferences.getInt(KEY_WIDTH_DP, DEFAULT_WIDTH_DP));
+        int width = Math.max(MIN_WIDTH_DP, Math.min(MAX_WIDTH_DP, preferences.getInt(KEY_WIDTH_DP, DEFAULT_WIDTH_DP)));
         int delay = Math.max(0, Math.min(5000, preferences.getInt(KEY_MARQUEE_DELAY_MS, DEFAULT_MARQUEE_DELAY_MS)));
         boolean compatRetry = preferences.getBoolean(KEY_COMPAT_RETRY, false);
+        boolean islandCompat = preferences.getBoolean(KEY_ISLAND_COMPAT, false);
         pendingManual = manual;
         pendingWidthDp = width;
         pendingDelayMs = delay;
         pendingCompatRetry = compatRetry;
+        pendingIslandCompat = islandCompat;
+        manualWidthSwitch.setChecked(manual);
         widthSeekBar.setProgress(width - MIN_WIDTH_DP);
+        widthValue.setText(width + " dp");
         delaySeekBar.setProgress(delay / 100);
         delayValue.setText(String.format(java.util.Locale.US, "%.1f 秒", delay / 1000f));
-        manualWidthSwitch.setChecked(manual);
         compatRetrySwitch.setChecked(compatRetry);
-        setManualEnabled(manual);
-    }
-
-    private void setManualEnabled(boolean enabled) {
-        widthSeekBar.setEnabled(enabled);
-        widthValue.setEnabled(enabled);
-        widthValue.setAlpha(enabled ? 1f : 0.45f);
+        islandCompatSwitch.setChecked(islandCompat);
     }
 
     private void showPending() {
@@ -216,12 +224,9 @@ public final class SettingsActivity extends Activity {
                 .putInt(KEY_WIDTH_DP, pendingWidthDp)
                 .putInt(KEY_MARQUEE_DELAY_MS, pendingDelayMs)
                 .putBoolean(KEY_COMPAT_RETRY, pendingCompatRetry)
+                .putBoolean(KEY_ISLAND_COMPAT, pendingIslandCompat)
                 .commit();
         restartHint.setText("设置已保存。请重启 SystemUI 或设备后生效。");
-    }
-
-    private int clamp(int value) {
-        return Math.max(MIN_WIDTH_DP, Math.min(MAX_WIDTH_DP, value));
     }
 
     private void configureLightSystemBars(Window window) {

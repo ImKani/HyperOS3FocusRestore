@@ -4,6 +4,7 @@ import android.app.Notification;
 import android.os.Bundle;
 import android.os.Parcelable;
 import android.database.Cursor;
+import org.json.JSONObject;
 import android.net.Uri;
 import android.text.TextUtils;
 import android.util.Log;
@@ -25,10 +26,9 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
     private static final String TAG = "HyperOS3FocusRestore";
     private static final String SYSTEM_UI = "com.android.systemui";
 
-    // Disable this if a KernelSU module already sets feature.island.debug=false.
-    private static final boolean FORCE_ISLAND_OFF = true;
     // OS3 rejects the legacy miui.focus.rv when used as contentRemoteViews.
     private static final boolean FALLBACK_MAIN_RV_FOR_STATUS_BAR = false;
+    // Let HyperOS own the prompt lifecycle; forcing true leaves stale icons after clicks.
     private static final boolean FORCE_SHOULD_SHOW = false;
 
     private ClassLoader classLoader;
@@ -37,10 +37,11 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
     // FocusedTextView.startMarqueeLocal() copies this value into TextView.
     // -1 keeps long lyrics moving instead of stopping after one pass.
     private static final int MARQUEE_REPEAT_LIMIT = -1;
-    private boolean limitWidth;
-    private int widthDp = DEFAULT_WIDTH_DP;
     private int marqueeDelayMs = SettingsProvider.DEFAULT_MARQUEE_DELAY_MS;
     private boolean compatRetry;
+    private boolean limitWidth;
+    private int widthDp = 160;
+    private boolean islandCompat;
     private TextView pendingMarqueeText;
     private Runnable pendingMarqueeRunnable;
 
@@ -70,8 +71,6 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
     }
 
     private void hookIslandProperty() {
-        if (!FORCE_ISLAND_OFF) return;
-
         try {
             XposedHelpers.findAndHookMethod(
                     "android.os.SystemProperties",
@@ -94,8 +93,6 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
     }
 
     private void hookDynamicFeatureFlag() {
-        if (!FORCE_ISLAND_OFF) return;
-
         try {
             Class<?> config = XposedHelpers.findClass(
                     "com.android.systemui.statusbar.notification.DynamicFeatureConfig",
@@ -120,11 +117,39 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
             XposedHelpers.findAndHookMethod(utils, "showOnStatusBar", expanded,
                     new XC_MethodHook() {
                         @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            if (!islandCompat) return;
+                            FocusData data = inspectExpanded(param.args[0]);
+                            IslandText islandText = extractIslandContent(data);
+                            if (islandText != null && !TextUtils.isEmpty(islandText.text)) {
+                                try {
+                                    XposedHelpers.setBooleanField(param.args[0], "mIsFocusNotification", true);
+                                    log("marked island notification for focus conversion source="
+                                            + islandText.source);
+                                } catch (Throwable t) {
+                                    error("markIslandFocusBeforeShow", t);
+                                }
+                            }
+                        }
+
+                        @Override
                         protected void afterHookedMethod(MethodHookParam param) {
                             FocusData data = inspectExpanded(param.args[0]);
                             if (data == null) return;
 
                             boolean original = Boolean.TRUE.equals(param.getResult());
+                            IslandText islandText = islandCompat ? extractIslandContent(data) : null;
+                            if (islandText != null && !TextUtils.isEmpty(islandText.text)) {
+                                try {
+                                    XposedHelpers.setBooleanField(param.args[0], "mIsFocusNotification", true);
+                                } catch (Throwable t) {
+                                    error("markIslandFocus", t);
+                                }
+                                param.setResult(true);
+                                log("island converted to focus source=" + islandText.source
+                                        + " content=" + islandText.text);
+                                return;
+                            }
                             boolean fallback = data.isFocus && data.hasMainRv;
                             if (!original && fallback) {
                                 param.setResult(true);
@@ -148,6 +173,7 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
                     "com.android.systemui.statusbar.phone.FocusedNotifPromptController$FocusedNotifBean",
                     classLoader);
 
+
             XposedHelpers.findAndHookMethod(view, "setData", bean, boolean.class,
                     new XC_MethodHook() {
                         @Override
@@ -162,6 +188,7 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
                                     + (data == null ? "bean=null" : data.summary()));
                             reloadSettings();
                             applyTextWidth(param.thisObject);
+                            scheduleNativeMarquee(param.thisObject);
                         }
                     });
         } catch (Throwable t) {
@@ -175,8 +202,6 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
     }
 
     private void readProviderSettings() {
-        limitWidth = false;
-        widthDp = DEFAULT_WIDTH_DP;
         try {
             Object context = XposedHelpers.callStaticMethod(
                     Class.forName("android.app.ActivityThread"), "currentApplication");
@@ -190,6 +215,7 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
                         widthDp = cursor.getInt(1);
                         marqueeDelayMs = cursor.getInt(2);
                         compatRetry = cursor.getColumnCount() > 3 && cursor.getInt(3) != 0;
+                        islandCompat = cursor.getColumnCount() > 4 && cursor.getInt(4) != 0;
                     }
                 } finally {
                     cursor.close();
@@ -201,88 +227,30 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
     }
 
     private String describeSettings() {
-        return "limit=" + limitWidth + " widthDp=" + widthDp
-                + " delayMs=" + marqueeDelayMs + " compatRetry=" + compatRetry;
+        return "limit=" + limitWidth + " widthDp=" + widthDp + " delayMs=" + marqueeDelayMs
+                + " compatRetry=" + compatRetry + " islandCompat=" + islandCompat;
     }
 
+    // Restored 0.7 behavior: constrain the text and its content slot, not the outer prompt.
     private void applyTextWidth(Object promptView) {
         try {
             Object value = XposedHelpers.getObjectField(promptView, "mContentText");
             if (!(value instanceof TextView)) return;
             TextView textView = (TextView) value;
-            boolean limited = limitWidth;
-            if (limited) {
-                int configuredWidthDp = widthDp;
-                float density = textView.getResources().getDisplayMetrics().density;
-                int parentWidthPx = Math.round(configuredWidthDp * density);
-                int textWidthPx = calculateTextAvailableWidth(promptView, textView, parentWidthPx);
-                textView.setMaxWidth(textWidthPx);
-                ViewGroup.LayoutParams params = textView.getLayoutParams();
-                if (params != null) {
-                    params.width = textWidthPx;
-                    textView.setLayoutParams(params);
-                }
-                textView.requestLayout();
-                log("applied manual focus text width parent=" + widthDp + "dp/"
-                        + parentWidthPx + "px text=" + textWidthPx + "px");
-            } else {
-                log("using system focus text width");
+            if (!limitWidth) return;
+            float density = textView.getResources().getDisplayMetrics().density;
+            int widthPx = Math.round(widthDp * density);
+            textView.setMaxWidth(widthPx);
+            ViewGroup.LayoutParams params = textView.getLayoutParams();
+            if (params != null) {
+                params.width = widthPx;
+                textView.setLayoutParams(params);
             }
+            textView.requestLayout();
+            log("applied 0.7 manual focus text width=" + widthDp + "dp px=" + widthPx);
         } catch (Throwable t) {
             error("applyTextWidth", t);
         }
-    }
-
-    private int calculateTextAvailableWidth(Object promptView, TextView textView,
-                                            int parentWidthPx) {
-        try {
-            Object parentValue = XposedHelpers.getObjectField(promptView, "mFocusedParentView");
-            if (parentValue instanceof View) {
-                View focusedParent = (View) parentValue;
-                int[] parentLocation = new int[2];
-                int[] textLocation = new int[2];
-                focusedParent.getLocationInWindow(parentLocation);
-                textView.getLocationInWindow(textLocation);
-                int consumedBeforeText = textLocation[0] - parentLocation[0];
-                int available = parentWidthPx - consumedBeforeText - focusedParent.getPaddingRight();
-                if (consumedBeforeText > 0 && available > 0 && available < parentWidthPx) {
-                    log("calculated focus text width from layout consumed="
-                            + consumedBeforeText + " available=" + available);
-                    return available;
-                }
-            }
-        } catch (Throwable t) {
-            error("calculateTextWidthLayout", t);
-        }
-
-        int consumed = 0;
-        if (promptView instanceof View) {
-            View prompt = (View) promptView;
-            consumed += prompt.getPaddingLeft() + prompt.getPaddingRight();
-        }
-        try {
-            Object iconValue = XposedHelpers.getObjectField(promptView, "mIcon");
-            if (iconValue instanceof View) {
-                View icon = (View) iconValue;
-                int iconWidth = icon.getWidth();
-                if (iconWidth <= 0 && icon.getLayoutParams() != null) {
-                    iconWidth = icon.getLayoutParams().width;
-                }
-                consumed += Math.max(0, iconWidth);
-            }
-        } catch (Throwable t) {
-            error("calculateTextWidthIcon", t);
-        }
-        ViewGroup.LayoutParams contentParams = textView.getParent() instanceof View
-                ? ((View) textView.getParent()).getLayoutParams() : null;
-        if (contentParams instanceof ViewGroup.MarginLayoutParams) {
-            ViewGroup.MarginLayoutParams margins = (ViewGroup.MarginLayoutParams) contentParams;
-            consumed += margins.getMarginStart() + margins.getMarginEnd();
-        }
-        int available = Math.max(1, parentWidthPx - consumed);
-        log("calculated focus text width from children consumed=" + consumed
-                + " available=" + available);
-        return available;
     }
 
     private void startNativeMarquee(Object promptView) {
@@ -397,6 +365,7 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
                             applyParentWidth(param.thisObject);
                         }
                     });
+            log("hooked updateFocusedParentParams for 0.4 width behavior");
         } catch (Throwable t) {
             error("hookFocusedParentParams", t);
         }
@@ -405,17 +374,20 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
     private void applyParentWidth(Object fragment) {
         try {
             reloadSettings();
-            boolean limited = limitWidth;
             Object value = XposedHelpers.getObjectField(fragment, "mFocusedNotifParent");
             if (!(value instanceof View)) return;
             View parent = (View) value;
             ViewGroup.LayoutParams params = parent.getLayoutParams();
             if (params == null) return;
-            if (limited) {
-                int configuredWidthDp = widthDp;
-                params.width = Math.round(configuredWidthDp * parent.getResources().getDisplayMetrics().density);
-                parent.setLayoutParams(params);
-                log("applied manual focus parent width=" + configuredWidthDp + "dp");
+            if (limitWidth) {
+                int widthPx = Math.round(widthDp
+                        * parent.getResources().getDisplayMetrics().density);
+                if (params.width != widthPx) {
+                    params.width = widthPx;
+                    parent.setLayoutParams(params);
+                    log("applied 0.4 manual focus parent width=" + widthDp
+                            + "dp px=" + widthPx);
+                }
             } else if (params.width != ViewGroup.LayoutParams.WRAP_CONTENT) {
                 params.width = ViewGroup.LayoutParams.WRAP_CONTENT;
                 parent.setLayoutParams(params);
@@ -438,6 +410,11 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
             XposedHelpers.findAndHookMethod(controller, "shouldShow", bean, boolean.class,
                     new XC_MethodHook() {
                         @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            if (islandCompat) patchBean(param.args[0], "before shouldShow");
+                        }
+
+                        @Override
                         protected void afterHookedMethod(MethodHookParam param) {
                             Object value = param.args[0];
                             FocusData data = inspectBean(value);
@@ -445,9 +422,11 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
                             log("shouldShow=" + result + (data == null ? " bean=null" : " " + data.summary()));
 
                             if (FORCE_SHOULD_SHOW && !result && data != null
-                                    && data.isFocus && data.hasDisplayContent()) {
+                                    && data.isFocus && (data.hasDisplayContent()
+                                    || hasConvertibleIslandContent(data))) {
                                 param.setResult(true);
-                                log("shouldShow forced=true key=" + data.key);
+                                log("shouldShow forced=true key=" + data.key
+                                        + " island=" + data.hasIslandParam);
                             }
                         }
                     });
@@ -484,11 +463,36 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
         }
     }
 
+    private boolean hasConvertibleIslandContent(FocusData data) {
+        if (!islandCompat || data == null || !data.hasIslandParam) return false;
+        IslandText text = extractIslandContent(data);
+        return text != null && !TextUtils.isEmpty(text.text);
+    }
+
     private void patchBean(Object bean, String stage) {
         FocusData data = inspectBean(bean);
         if (data == null) {
             log(stage + " bean=null");
             return;
+        }
+
+
+        IslandText islandText = islandCompat ? extractIslandContent(data) : null;
+        if (islandText != null && !TextUtils.isEmpty(islandText.text)) {
+            try {
+                // When island conversion is enabled, the ordinary notification title
+                // (for example "Template 1: Weather") is only a fallback. Replace it
+                // with the selected template's actual body so the focus view receives
+                // Heavy Snow, Verification Code, progress text, and similar content.
+                String current = stringValue(getField(bean, "content"));
+                XposedHelpers.setObjectField(bean, "content", islandText.text);
+                data.content = islandText.text;
+                data.isFocus = true;
+                log(stage + " applied island focus source=" + islandText.source
+                        + " replaced=" + !TextUtils.isEmpty(current));
+            } catch (Throwable t) {
+                error(stage + " applyIslandContent", t);
+            }
         }
 
         if (FALLBACK_MAIN_RV_FOR_STATUS_BAR && data.isFocus) {
@@ -512,6 +516,210 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
         }
 
         log(stage + " " + data.summary());
+    }
+
+    private IslandText extractIslandContent(FocusData data) {
+        if (data == null || TextUtils.isEmpty(data.islandParam)) return null;
+        // A notification that already has focus data must use that data as-is.
+        if (data.hasExplicitFocusData && !data.hasIslandParam) {
+            log("island conversion skipped because explicit focus data already exists");
+            return null;
+        }
+        try {
+            JSONObject root = new JSONObject(data.islandParam);
+            JSONObject v2 = root.optJSONObject("param_v2");
+            if (v2 == null) v2 = root;
+
+            // Older HyperOS focus payloads (notably SMS verification) use protocol 1.
+            if (root.optInt("protocol", 3) == 1 || "verifyCode".equals(root.optString("scene"))) {
+                String legacy = joinTexts(root, "protocol1", "title", "desc1", "desc2");
+                return TextUtils.isEmpty(legacy) ? null : new IslandText(legacy, "protocol1:" + root.optString("scene", "legacy"));
+            }
+
+            JSONObject base = v2.optJSONObject("baseInfo");
+            JSONObject highlight = v2.optJSONObject("highlightInfo");
+            JSONObject highlightV3 = v2.optJSONObject("highlightInfoV3");
+            JSONObject chat = v2.optJSONObject("chatInfo");
+            JSONObject hint = v2.optJSONObject("hintInfo");
+
+            String source = null;
+            String result = joinTexts(base, "title", "subTitle", "specialTitle",
+                    "extraTitle", "content", "subContent");
+            if (base != null && !TextUtils.isEmpty(result)) {
+                // Some HyperOS 3.0.5 builds drop BaseInfo.title while retaining
+                // subTitle/content. The same primary title remains in the island
+                // imageTextInfo payload, so restore it before displaying the focus text.
+                String islandTitle = findPrimaryIslandTitle(v2.optJSONObject("param_island"));
+                if (!TextUtils.isEmpty(islandTitle) && !result.startsWith(islandTitle)) {
+                    result = joinText(islandTitle, result);
+                    log("restored missing baseInfo title from param_island=" + islandTitle);
+                }
+            }
+            if (!TextUtils.isEmpty(result)) source = "baseInfo";
+            if (TextUtils.isEmpty(result)) {
+                result = joinTexts(highlight, "title", "content", "subContent");
+                if (!TextUtils.isEmpty(result)) source = "highlightInfo";
+            }
+            if (TextUtils.isEmpty(result)) {
+                result = joinTexts(highlightV3, "primaryText", "secondaryText", "highLightText",
+                        "label");
+                if (!TextUtils.isEmpty(result)) source = "highlightInfoV3";
+            }
+            if (TextUtils.isEmpty(result)) {
+                result = joinTexts(chat, "title", "content");
+                if (!TextUtils.isEmpty(result)) source = "chatInfo";
+            }
+            if (TextUtils.isEmpty(result)) {
+                JSONObject iconText = v2.optJSONObject("iconTextInfo");
+                result = joinCompact(firstText(iconText, "title"), firstText(iconText, "content"));
+                result = joinCompact(result, firstText(iconText, "subContent"));
+                if (!TextUtils.isEmpty(result)) source = "iconTextInfo";
+            }
+            if (TextUtils.isEmpty(result)) {
+                result = joinTexts(v2.optJSONObject("animTextInfo"), "title", "content");
+                if (!TextUtils.isEmpty(result)) source = "animTextInfo";
+            }
+            if (TextUtils.isEmpty(result)) {
+                result = joinTexts(v2.optJSONObject("coverInfo"), "title", "content", "subContent");
+                if (!TextUtils.isEmpty(result)) source = "coverInfo";
+            }
+            if (TextUtils.isEmpty(result)) {
+                result = joinTexts(hint, "title", "subTitle", "content", "subContent");
+                if (!TextUtils.isEmpty(result)) source = "hintInfo";
+            }
+            if (TextUtils.isEmpty(result)) {
+                JSONObject multiProgress = v2.optJSONObject("multiProgressInfo");
+                result = progressText(multiProgress);
+                if (!TextUtils.isEmpty(result)) source = "multiProgressInfo";
+            }
+            if (TextUtils.isEmpty(result)) {
+                result = progressText(v2.optJSONObject("progressInfo"));
+                if (!TextUtils.isEmpty(result)) source = "progressInfo";
+            }
+            if (TextUtils.isEmpty(result)) {
+                result = joinTexts(v2.optJSONObject("stepInfo"), "title", "content", "subContent", "step");
+                if (!TextUtils.isEmpty(result)) source = "stepInfo";
+            }
+            if (TextUtils.isEmpty(result)) {
+                JSONObject island = v2.optJSONObject("param_island");
+                result = findIslandText(island);
+                if (!TextUtils.isEmpty(result)) source = "param_island";
+            }
+            if (TextUtils.isEmpty(result)) {
+                result = cleanText(v2.optString("ticker", null));
+                if (!TextUtils.isEmpty(result)) source = "ticker";
+            }
+            if (TextUtils.isEmpty(result) && v2 != root) {
+                result = cleanText(root.optString("ticker", null));
+                if (!TextUtils.isEmpty(result)) source = "custom.ticker";
+            }
+            return TextUtils.isEmpty(result) ? null : new IslandText(result, source);
+        } catch (Throwable t) {
+            log("island param parse failed");
+            return null;
+        }
+    }
+
+    private static String joinTexts(JSONObject object, String ignoredSource, String... keys) {
+        if (object == null) return null;
+        String result = null;
+        for (String key : keys) result = joinText(result, firstText(object, key));
+        return result;
+    }
+
+    private static String progressText(JSONObject object) {
+        if (object == null) return null;
+        String result = joinText(firstText(object, "title", "content", "label"),
+                percentageText(object));
+        if (!TextUtils.isEmpty(result)) return result;
+        JSONObject nested = object.optJSONObject("progressInfo");
+        return nested == null ? null : joinText(firstText(nested, "title", "content", "label"),
+                percentageText(nested));
+    }
+
+    private static String percentageText(JSONObject object) {
+        if (object == null || !object.has("progress")) return null;
+        Object value = object.opt("progress");
+        if (value == null || value == JSONObject.NULL) return null;
+        String text = cleanText(String.valueOf(value));
+        return TextUtils.isEmpty(text) ? null : (text.endsWith("%") ? text : text + "%");
+    }
+
+    private static String sourceFor(JSONObject v2, String result) {
+        if (v2.has("baseInfo")) return "baseInfo";
+        if (v2.has("highlightInfo")) return "highlightInfo";
+        if (v2.has("chatInfo")) return "chatInfo";
+        if (v2.has("hintInfo")) return "hintInfo";
+        if (v2.has("multiProgressInfo")) return "multiProgressInfo";
+        if (v2.has("param_island")) return "param_island";
+        return "ticker";
+    }
+
+    private static String findIslandText(JSONObject island) {
+        if (island == null) return null;
+        String result = joinTexts(island, "param_island", "title", "content", "frontTitle");
+        if (!TextUtils.isEmpty(result)) return result;
+        JSONObject big = island.optJSONObject("bigIslandArea");
+        JSONObject info = big == null ? null : big.optJSONObject("imageTextInfoLeft");
+        JSONObject text = info == null ? null : firstObject(info, "textInfo", "miui.focus.paramtextInfo");
+        result = joinTexts(text, "imageTextInfoLeft", "frontTitle", "title", "content", "subContent");
+        if (!TextUtils.isEmpty(result)) return result;
+        JSONObject right = big == null ? null : big.optJSONObject("imageTextInfoRight");
+        text = right == null ? null : firstObject(right, "textInfo", "miui.focus.paramtextInfo");
+        result = joinTexts(text, "imageTextInfoRight", "title", "content", "subContent");
+        if (!TextUtils.isEmpty(result)) return result;
+        result = progressText(big == null ? null : firstObject(big, "progressTextInfo", "fixedWidthDigitInfo", "sameWidthDigitInfo"));
+        if (!TextUtils.isEmpty(result)) return result;
+        JSONObject small = island.optJSONObject("smallIslandArea");
+        return joinTexts(small, "smallIslandArea", "title", "content", "subContent");
+    }
+
+    private static String findPrimaryIslandTitle(JSONObject island) {
+        if (island == null) return null;
+        JSONObject big = island.optJSONObject("bigIslandArea");
+        JSONObject left = big == null ? null : big.optJSONObject("imageTextInfoLeft");
+        JSONObject text = left == null ? null : firstObject(left, "textInfo", "miui.focus.paramtextInfo");
+        return firstText(text, "title", "frontTitle", "content");
+    }
+
+    private static JSONObject firstObject(JSONObject object, String... keys) {
+        if (object == null) return null;
+        for (String key : keys) {
+            JSONObject value = object.optJSONObject(key);
+            if (value != null) return value;
+        }
+        return null;
+    }
+
+    private static String firstText(JSONObject object, String... keys) {
+        if (object == null) return null;
+        for (String key : keys) {
+            String value = cleanText(object.optString(key, null));
+            if (!TextUtils.isEmpty(value)) return value;
+        }
+        return null;
+    }
+
+    private static String joinCompact(String first, String second) {
+        first = cleanText(first);
+        second = cleanText(second);
+        if (TextUtils.isEmpty(first)) return second;
+        if (TextUtils.isEmpty(second) || first.equals(second)) return first;
+        return first + "·" + second;
+    }
+
+    private static String joinText(String first, String second) {
+        first = cleanText(first);
+        second = cleanText(second);
+        if (TextUtils.isEmpty(first)) return second;
+        if (TextUtils.isEmpty(second) || first.equals(second)) return first;
+        return first + " · " + second;
+    }
+
+    private static String cleanText(String value) {
+        if (value == null) return null;
+        value = value.trim();
+        return value.length() == 0 ? null : value;
     }
 
     private FocusData inspectBean(Object bean) {
@@ -546,7 +754,13 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
 
             if (notification == null || notification.extras == null) return data;
             Bundle extras = notification.extras;
-            data.isFocus = data.isFocus || extras.getBoolean("miui.focus.isFocus", false);
+            boolean explicitFocus = extras.getBoolean("miui.focus.isFocus", false);
+            data.isFocus = data.isFocus || explicitFocus;
+            data.islandParam = extras.getString("miui.focus.param");
+            if (TextUtils.isEmpty(data.islandParam)) {
+                data.islandParam = extras.getString("miui.focus.param.custom");
+            }
+            data.hasIslandParam = !TextUtils.isEmpty(data.islandParam);
             data.ticker = extras.getString("miui.focus.ticker");
             data.mainRv = getRemoteViews(extras, "miui.focus.rv");
             data.mainNightRv = getRemoteViews(extras, "miui.focus.rvNight");
@@ -554,6 +768,8 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
             data.barNightRv = getRemoteViews(extras, "miui.focus.rvBarNight");
             data.hasMainRv = data.mainRv != null;
             data.hasBarRv = data.barRv != null;
+            data.hasExplicitFocusData = explicitFocus || data.hasMainRv || data.hasBarRv
+                    || !TextUtils.isEmpty(data.ticker);
             return data;
         } catch (Throwable t) {
             error("inspectExpanded", t);
@@ -612,10 +828,23 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
         XposedBridge.log(TAG + " ERROR " + stage + ": " + Log.getStackTraceString(t));
     }
 
+    private static final class IslandText {
+        final String text;
+        final String source;
+
+        IslandText(String text, String source) {
+            this.text = text;
+            this.source = source;
+        }
+    }
+
     private static final class FocusData {
         boolean isFocus;
         boolean hasMainRv;
         boolean hasBarRv;
+        boolean hasIslandParam;
+        boolean hasExplicitFocusData;
+        String islandParam;
         String key;
         String ticker;
         String content;
@@ -640,6 +869,7 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
                     + " rvNight=" + (mainNightRv != null)
                     + " rvBar=" + (barRv != null)
                     + " rvBarNight=" + (barNightRv != null)
+                    + " islandParam=" + hasIslandParam
                     + " contentRv=" + (contentRv != null)
                     + " contentNightRv=" + (contentNightRv != null);
         }
