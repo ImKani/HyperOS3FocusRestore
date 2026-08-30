@@ -3,6 +3,9 @@ package com.hyperos3.focusrestore;
 import android.app.Activity;
 import android.content.SharedPreferences;
 import android.content.ContentResolver;
+import android.content.ActivityNotFoundException;
+import android.content.Intent;
+import android.net.Uri;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
@@ -131,17 +134,13 @@ public final class SettingsActivity extends Activity {
         islandCompatSwitch.setText("超级岛内容转焦点通知");
         islandCompatSwitch.setTextSize(16);
         root.addView(islandCompatSwitch, matchWrap(dp(2)));
-        TextView islandHint = text("默认关闭：只处理原生焦点通知。开启后关闭原生超级岛，并尝试提取取件码、配送进度、检票口等主体内容显示到焦点通知。", 13, Color.rgb(95, 99, 104));
+        TextView islandHint = text("默认关闭。开启后关闭原生超级岛，并尝试把取件码、配送进度、检票口等主体内容转换为焦点通知；转换出的通知点击不会启动应用或关闭通知。", 13, Color.rgb(95, 99, 104));
         islandHint.setPadding(dp(12), 0, dp(12), dp(8));
         root.addView(islandHint, matchWrap(dp(8)));
 
         TextView stageHint = text("系统灵动舞台隐藏请使用其他工具，本模块不负责隐藏。", 13, Color.rgb(95, 99, 104));
         stageHint.setPadding(dp(12), 0, dp(12), dp(8));
         root.addView(stageHint, matchWrap(dp(8)));
-
-        TextView authorHint = text("制作者：ImKani\n酷安主页：https://www.coolapk.com/u/1205658\nGitHub：https://github.com/ImKani/HyperOS3FocusRestore\n本模块由 AI 辅助反编译分析与编写，存在 ROM 版本差异、系统崩溃、显示异常、功能失效等不可控风险。请自行备份并承担使用风险。", 12, Color.rgb(95, 99, 104));
-        authorHint.setPadding(dp(12), dp(8), dp(12), dp(12));
-        root.addView(authorHint, matchWrap(dp(8)));
 
         saveButton = new Button(this);
         saveButton.setText("保存设置");
@@ -154,6 +153,17 @@ public final class SettingsActivity extends Activity {
         saveBackground.setCornerRadius(dp(14));
         saveButton.setBackground(saveBackground);
         root.addView(saveButton, matchWrap(dp(8)));
+
+        Button aboutButton = new Button(this);
+        aboutButton.setText("关于项目 · 打开 GitHub 仓库");
+        aboutButton.setAllCaps(false);
+        aboutButton.setMinHeight(dp(44));
+        aboutButton.setOnClickListener(view -> openExternalLink("https://github.com/ImKani/HyperOS3FocusRestore"));
+        root.addView(aboutButton, matchWrap(dp(2)));
+
+        TextView authorHint = text("制作者：ImKani\n酷安主页：https://www.coolapk.com/u/1205658\nGitHub：https://github.com/ImKani/HyperOS3FocusRestore\n本模块由 AI 辅助反编译分析与编写，存在 ROM 版本差异、系统崩溃、显示异常、功能失效等不可控风险。请自行备份并承担使用风险。", 12, Color.rgb(95, 99, 104));
+        authorHint.setPadding(dp(12), dp(4), dp(12), dp(12));
+        root.addView(authorHint, matchWrap(dp(8)));
 
         restartHint = text("修改后点击保存，再重启 SystemUI 或设备生效。", 14, Color.rgb(95, 99, 104));
         restartHint.setPadding(dp(12), dp(12), dp(12), dp(12));
@@ -235,6 +245,14 @@ public final class SettingsActivity extends Activity {
                 .putBoolean(KEY_ISLAND_COMPAT, pendingIslandCompat)
                 .commit();
         restartHint.setText("设置已保存。请重启 SystemUI 或设备后生效。");
+    }
+
+    private void openExternalLink(String url) {
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+        } catch (ActivityNotFoundException e) {
+            restartHint.setText("设备没有可用的浏览器，无法打开链接。");
+        }
     }
 
     private void configureLightSystemBars(Window window) {
