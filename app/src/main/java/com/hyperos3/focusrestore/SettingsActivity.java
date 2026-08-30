@@ -240,6 +240,17 @@ public final class SettingsActivity extends Activity {
         }
     }
 
+    private void configureLightSystemBars(Window window) {
+        window.setStatusBarColor(Color.rgb(248, 249, 250));
+        window.setNavigationBarColor(Color.rgb(248, 249, 250));
+        if (Build.VERSION.SDK_INT >= 23) {
+            int flags = window.getDecorView().getSystemUiVisibility();
+            flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+            if (Build.VERSION.SDK_INT >= 26) flags |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+            window.getDecorView().setSystemUiVisibility(flags);
+        }
+    }
+
     private TextView text(String value, int sizeSp, int color) {
         TextView view = new TextView(this);
         view.setText(value);
