@@ -143,7 +143,7 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
                         protected void beforeHookedMethod(MethodHookParam param) {
                             if (!currentSettings.islandCompat) return;
                             FocusData data = inspectExpanded(param.args[0]);
-                            IslandText islandText = (data != null && !data.isOriginalFocus && currentSettings.islandCompat)
+                            IslandText islandText = (data != null && shouldConvert(data))
                                     ? extractIslandContent(data) : null;
                             if (islandText != null && !TextUtils.isEmpty(islandText.text)) {
                                 try {
@@ -555,6 +555,11 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
         }
     }
 
+    private boolean shouldConvert(FocusData data) {
+        if (data == null || !data.hasIslandParam || !currentSettings.islandCompat) return false;
+        return !data.isOriginalFocus || currentSettings.islandForcePackages.contains(data.packageName);
+    }
+
     private boolean hasConvertibleIslandContent(FocusData data) {
         if (!currentSettings.islandCompat || data == null || !data.hasIslandParam) return false;
         IslandText text = extractIslandContent(data);
@@ -569,8 +574,7 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
         }
 
 
-        IslandText islandText = (!data.isOriginalFocus && currentSettings.islandCompat)
-                ? extractIslandContent(data) : null;
+        IslandText islandText = shouldConvert(data) ? extractIslandContent(data) : null;
         if (islandText != null && !TextUtils.isEmpty(islandText.text)) {
             try {
                 // When island conversion is enabled, the ordinary notification title
@@ -886,6 +890,7 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
             FocusData data = inspectExpanded(getField(bean, "sbn"));
             if (data == null) data = new FocusData();
             data.key = stringValue(getField(bean, "notifKey"));
+            if (TextUtils.isEmpty(data.packageName)) data.packageName = packageFromKey(data.key);
             data.content = stringValue(getField(bean, "content"));
             data.contentRv = asRemoteViews(getField(bean, "contentRemoteViews"));
             data.contentNightRv = asRemoteViews(getField(bean, "contentNightRemoteViews"));
@@ -900,6 +905,7 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
         if (expanded == null) return null;
         try {
             FocusData data = new FocusData();
+            data.packageName = notificationPackageName(expanded);
             boolean preMarked = preMarkedIslands.contains(expanded);
             boolean originalFocusField = getBooleanField(expanded, "mIsFocusNotification", false);
             data.isFocus = originalFocusField;
@@ -940,6 +946,30 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
             error("inspectExpanded", t);
             return null;
         }
+    }
+
+    private static String notificationPackageName(Object expanded) {
+        try {
+            Object value = invokeNoArg(expanded, "getPackageName");
+            if (value != null) return String.valueOf(value);
+        } catch (Throwable ignored) {
+        }
+        try {
+            Object sbn = getField(expanded, "mSbn");
+            if (sbn == null) sbn = getField(expanded, "sbn");
+            if (sbn != null) {
+                Object value = invokeNoArg(sbn, "getPackageName");
+                if (value != null) return String.valueOf(value);
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
+    }
+
+    private static String packageFromKey(String key) {
+        if (TextUtils.isEmpty(key)) return null;
+        String[] parts = key.split("\\|", 5);
+        return parts.length > 1 && parts[1].length() > 0 ? parts[1] : null;
     }
 
     private static RemoteViews getRemoteViews(Bundle extras, String key) {
@@ -1012,6 +1042,7 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
         boolean hasExplicitFocusData;
         String islandParam;
         String key;
+        String packageName;
         String ticker;
         String content;
         RemoteViews mainRv;

@@ -1,10 +1,12 @@
 package com.hyperos3.focusrestore;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
+import android.content.pm.ApplicationInfo;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.Drawable;
@@ -23,6 +25,14 @@ import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.Switch;
 import android.widget.TextView;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 
 public final class SettingsActivity extends Activity {
     // Deprecated aliases retained for the existing Hook source/API surface.
@@ -73,6 +83,8 @@ public final class SettingsActivity extends Activity {
     private boolean pendingManual, pendingCompatRetry, pendingIslandCompat, pendingAllowFocusClick;
     private int pendingWidthDp, pendingDelayMs;
     private String pendingGeneralSeparator, pendingSideSeparator;
+    private Set<String> pendingForcePackages = new HashSet<>();
+    private Button forcePackagesButton;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -151,7 +163,9 @@ public final class SettingsActivity extends Activity {
             item.setPadding(dp(8), 0, dp(8), 0);
             item.setOnClickListener(v -> showPage(page));
             navButtons[i] = item;
-            nav.addView(item, new LinearLayout.LayoutParams(0, -1, 1f));
+            LinearLayout.LayoutParams itemParams = new LinearLayout.LayoutParams(0, dp(48), 1f);
+            itemParams.gravity = Gravity.CENTER_VERTICAL;
+            nav.addView(item, itemParams);
         }
         return nav;
     }
@@ -263,10 +277,18 @@ public final class SettingsActivity extends Activity {
         sideSeparatorInput = input("默认：·，允许留空");
         sideSeparatorInput.setText(pendingSideSeparator);
         customPanel.addView(sideSeparatorInput, matchWrap(0));
+        forcePackagesButton = new Button(this);
+        forcePackagesButton.setText(forcePackagesLabel());
+        forcePackagesButton.setAllCaps(false);
+        forcePackagesButton.setTextSize(14);
+        forcePackagesButton.setOnClickListener(v -> showForcePackagesDialog());
+        customPanel.addView(forcePackagesButton, matchWrap(dp(8)));
         root.addView(customPanel, matchWrap(dp(12)));
         TextView customHint = text("通用连接符用于同一元素的标题、时间、说明和进度拼接；左右连接符只用于超级岛左侧与右侧之间。两项都允许留空。修改后请点击顶部保存，并重启 SystemUI 或设备生效。", 13, COLOR_TEXT_SECONDARY);
         customHint.setPadding(dp(12), 0, dp(12), dp(8));
+        customHint.setText("通用连接符用于同一元素的标题、时间、说明和进度拼接；左右连接符只用于超级岛左侧与右侧之间。白名单仅在“转换超级岛内容为焦点通知”开启时生效；选中的应用即使同时带有 Focus RemoteViews，也会强制优先转换超级岛协议。默认转换开关关闭，白名单按钮为浅色禁用状态。修改后请点击顶部保存，并重启 SystemUI 或设备生效。");
         root.addView(customHint, matchWrap(dp(8)));
+        updateForcePackagesButton();
         statusHint = text("修改后点击顶部保存，再重启 SystemUI 或设备生效。", 14, COLOR_TEXT_SECONDARY);
         root.addView(statusHint, matchWrap(dp(8)));
     }
@@ -298,8 +320,61 @@ public final class SettingsActivity extends Activity {
             public void onStopTrackingTouch(SeekBar s) { }
         });
         compatRetrySwitch.setOnCheckedChangeListener((b, c) -> { pendingCompatRetry = c; markPending(); });
-        islandCompatSwitch.setOnCheckedChangeListener((b, c) -> { pendingIslandCompat = c; markPending(); });
+        islandCompatSwitch.setOnCheckedChangeListener((b, c) -> {
+            pendingIslandCompat = c;
+            updateForcePackagesButton();
+            markPending();
+        });
         allowFocusClickSwitch.setOnCheckedChangeListener((b, c) -> { pendingAllowFocusClick = c; markPending(); });
+    }
+
+    private String forcePackagesLabel() {
+        return pendingForcePackages.isEmpty()
+                ? "强制转换白名单（未选择）"
+                : "强制转换白名单（已选 " + pendingForcePackages.size() + " 个应用）";
+    }
+
+    private void updateForcePackagesButton() {
+        if (forcePackagesButton == null) return;
+        boolean enabled = pendingIslandCompat;
+        forcePackagesButton.setEnabled(enabled);
+        forcePackagesButton.setText(forcePackagesLabel());
+        forcePackagesButton.setTextColor(enabled ? COLOR_PRIMARY : Color.rgb(170, 174, 180));
+        forcePackagesButton.setBackground(roundedBg(enabled ? COLOR_PRIMARY_LIGHT : Color.rgb(232, 234, 237), 10));
+    }
+
+    private void showForcePackagesDialog() {
+        if (!pendingIslandCompat) return;
+        final List<ApplicationInfo> apps = new ArrayList<>();
+        for (ApplicationInfo app : getPackageManager().getInstalledApplications(0)) {
+            if (getPackageManager().getLaunchIntentForPackage(app.packageName) != null) apps.add(app);
+        }
+        Collections.sort(apps, new Comparator<ApplicationInfo>() {
+            @Override public int compare(ApplicationInfo a, ApplicationInfo b) {
+                String left = String.valueOf(a.loadLabel(getPackageManager()));
+                String right = String.valueOf(b.loadLabel(getPackageManager()));
+                return left.compareToIgnoreCase(right);
+            }
+        });
+        CharSequence[] labels = new CharSequence[apps.size()];
+        boolean[] checked = new boolean[apps.size()];
+        for (int i = 0; i < apps.size(); i++) {
+            ApplicationInfo app = apps.get(i);
+            labels[i] = String.valueOf(app.loadLabel(getPackageManager())) + "\\n" + app.packageName;
+            checked[i] = pendingForcePackages.contains(app.packageName);
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("强制转换超级岛应用")
+                .setMultiChoiceItems(labels, checked, (dialog, which, isChecked) -> {
+                    String packageName = apps.get(which).packageName;
+                    if (isChecked) pendingForcePackages.add(packageName);
+                    else pendingForcePackages.remove(packageName);
+                    forcePackagesButton.setText(forcePackagesLabel());
+                    markPending();
+                })
+                .setPositiveButton("完成", null)
+                .setNegativeButton("取消", null)
+                .show();
     }
 
     private EditText input(String hint) {
@@ -326,6 +401,7 @@ public final class SettingsActivity extends Activity {
         pendingAllowFocusClick = settings.allowFocusClick;
         pendingGeneralSeparator = settings.islandGeneralSeparator;
         pendingSideSeparator = settings.islandSideSeparator;
+        pendingForcePackages = new HashSet<>(settings.islandForcePackages);
     }
 
     private void captureCurrentInputs() {
@@ -338,7 +414,7 @@ public final class SettingsActivity extends Activity {
         if (sideSeparatorInput != null) pendingSideSeparator = sideSeparatorInput.getText().toString();
         settings = FocusRestoreSettings.withValues(pendingManual, pendingWidthDp, pendingDelayMs,
                 pendingCompatRetry, pendingIslandCompat, pendingAllowFocusClick,
-                pendingGeneralSeparator, pendingSideSeparator);
+                pendingGeneralSeparator, pendingSideSeparator, pendingForcePackages);
         settings.save(preferences);
         if (statusHint != null) statusHint.setText("设置已保存。请重启 SystemUI 或设备后生效。");
     }

@@ -6,10 +6,12 @@ import android.database.Cursor;
 import android.database.MatrixCursor;
 import android.net.Uri;
 
+import java.util.Collections;
+
 public final class SettingsProvider extends ContentProvider {
     static final String AUTHORITY = "com.hyperos3.focusrestore.settings";
     static final Uri URI = Uri.parse("content://" + AUTHORITY + "/config");
-    static final String[] COLUMNS = {"limit_text_width", "text_width_dp", "marquee_delay_ms", "compat_retry", "island_compat", "island_separator", "allow_focus_click", "island_general_separator", "island_side_separator"};
+    static final String[] COLUMNS = {"limit_text_width", "text_width_dp", "marquee_delay_ms", "compat_retry", "island_compat", "island_separator", "allow_focus_click", "island_general_separator", "island_side_separator", "island_force_packages"};
     static final String KEY_MARQUEE_DELAY_MS = FocusRestoreSettings.KEY_MARQUEE_DELAY_MS;
     static final int DEFAULT_MARQUEE_DELAY_MS = FocusRestoreSettings.DEFAULT_MARQUEE_DELAY_MS;
 
@@ -32,8 +34,18 @@ public final class SettingsProvider extends ContentProvider {
                 settings.marqueeDelayMs, settings.compatRetry ? 1 : 0,
                 settings.islandCompat ? 1 : 0, legacySeparator,
                 settings.allowFocusClick ? 1 : 0, settings.islandGeneralSeparator,
-                settings.islandSideSeparator});
+                settings.islandSideSeparator, joinPackages(settings.islandForcePackages)});
         return cursor;
+    }
+
+    private static String joinPackages(java.util.Set<String> packages) {
+        if (packages == null || packages.isEmpty()) return "";
+        StringBuilder result = new StringBuilder();
+        for (String value : packages) {
+            if (result.length() > 0) result.append(FocusRestoreSettings.PACKAGE_SET_SEPARATOR);
+            result.append(value);
+        }
+        return result.toString();
     }
 
     @Override public String getType(Uri uri) { return "vnd.android.cursor.item/vnd.hyperos3.settings"; }
