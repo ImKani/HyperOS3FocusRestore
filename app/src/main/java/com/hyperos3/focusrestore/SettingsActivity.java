@@ -216,7 +216,7 @@ public final class SettingsActivity extends Activity {
         styleSwitch(compatRetrySwitch);
         compatPanel.addView(compatRetrySwitch, matchWrap(dp(4)));
         islandCompatSwitch = new Switch(this);
-        islandCompatSwitch.setText("超级岛内容转焦点通知");
+        islandCompatSwitch.setText("转换超级岛内容为焦点通知");
         styleSwitch(islandCompatSwitch);
         compatPanel.addView(islandCompatSwitch, matchWrap(dp(4)));
         allowFocusClickSwitch = new Switch(this);
@@ -236,7 +236,7 @@ public final class SettingsActivity extends Activity {
         TextView clickWarning = text("• 点击风险：HyperOS 3 上基本所有焦点通知都不支持点击。点击可能导致焦点通知消失或不可见，相关系统逻辑也可能无法正常处理。默认关闭点击；只有确认接受风险后才建议开启。", 13, COLOR_TEXT_SECONDARY);
         clickWarning.setPadding(dp(12), dp(4), dp(12), dp(8));
         root.addView(clickWarning, matchWrap(dp(8)));
-        TextView islandNotice = text("超级岛转换只处理通知实际提供的协议内容，不负责隐藏系统灵动舞台；需要隐藏时请使用其他工具。修改后请点击顶部保存，并重启 SystemUI 或设备生效。", 13, COLOR_TEXT_SECONDARY);
+        TextView islandNotice = text("• 超级岛屏蔽：模块始终尝试关闭 HyperOS 超级岛显示路径，避免其占用状态栏区域。\n• 内容转换：上方开关只控制是否读取协议内容并转换为 Focus，不控制超级岛屏蔽开关。\n• 灵动舞台：本模块不负责隐藏 MIUIStrongToast（灵动舞台）；如有需要，请使用其他专用工具。修改后请点击顶部保存，并重启 SystemUI 或设备生效。", 13, COLOR_TEXT_SECONDARY);
         islandNotice.setPadding(dp(12), 0, dp(12), dp(8));
         root.addView(islandNotice, matchWrap(dp(8)));
         statusHint = text("修改后点击顶部保存，再重启 SystemUI 或设备生效。", 14, COLOR_TEXT_SECONDARY);

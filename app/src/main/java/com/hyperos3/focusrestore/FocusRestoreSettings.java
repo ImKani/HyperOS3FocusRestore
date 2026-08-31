@@ -87,7 +87,7 @@ public final class FocusRestoreSettings {
                 .putString(KEY_ISLAND_GENERAL_SEPARATOR, islandGeneralSeparator)
                 .putString(KEY_ISLAND_SIDE_SEPARATOR, islandSideSeparator)
                 .putString(KEY_ISLAND_SEPARATOR, islandGeneralSeparator)
-                .commit();
+                .apply();
     }
 
     private static String valueOrDefault(String value) {
