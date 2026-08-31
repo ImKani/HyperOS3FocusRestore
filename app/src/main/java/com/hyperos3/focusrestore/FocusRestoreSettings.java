@@ -20,6 +20,7 @@ public final class FocusRestoreSettings {
     public static final String KEY_ISLAND_GENERAL_SEPARATOR = "island_general_separator";
     public static final String KEY_ISLAND_SIDE_SEPARATOR = "island_side_separator";
     public static final String KEY_ISLAND_FORCE_PACKAGES = "island_force_packages";
+    public static final String KEY_ISLAND_APP_CACHE = "island_app_cache";
     public static final String PACKAGE_SET_SEPARATOR = "\u001f";
 
     public static final boolean DEFAULT_LIMIT_WIDTH = true;

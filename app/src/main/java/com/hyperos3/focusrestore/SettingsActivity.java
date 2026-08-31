@@ -1,7 +1,7 @@
 package com.hyperos3.focusrestore;
 
 import android.app.Activity;
-import android.app.AlertDialog;
+import android.app.Dialog;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -10,6 +10,7 @@ import android.content.pm.ApplicationInfo;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.Drawable;
+import android.graphics.drawable.ColorDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -21,10 +22,15 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ListView;
+import android.widget.BaseAdapter;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.Switch;
 import android.widget.TextView;
+
+import android.text.Editable;
+import android.text.TextWatcher;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -85,6 +91,16 @@ public final class SettingsActivity extends Activity {
     private String pendingGeneralSeparator, pendingSideSeparator;
     private Set<String> pendingForcePackages = new HashSet<>();
     private Button forcePackagesButton;
+    private List<ApplicationInfo> dialogAllApps = new ArrayList<>();
+    private List<ApplicationInfo> dialogVisibleApps = new ArrayList<>();
+    private Set<String> dialogSelectedPackages;
+    private ListView dialogListView;
+    private ForcePackageAdapter dialogAdapter;
+    private EditText dialogSearchInput;
+    private Switch dialogShowSystemSwitch;
+    private TextView dialogEmptyView;
+    private boolean dialogAppsLoaded;
+    private static final String APP_CACHE_SEPARATOR = "\u001e";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -133,7 +149,7 @@ public final class SettingsActivity extends Activity {
         saveButton.setText("保存");
         saveButton.setTextSize(14);
         saveButton.setTextColor(Color.WHITE);
-        saveButton.setBackground(roundedBg(COLOR_PRIMARY, 14));
+        saveButton.setBackground(roundedBg(COLOR_PRIMARY, 10));
         saveButton.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_save_floppy, 0, 0, 0);
         saveButton.setCompoundDrawablePadding(dp(4));
         saveButton.setAllCaps(false);
@@ -193,7 +209,7 @@ public final class SettingsActivity extends Activity {
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setPadding(dp(16), dp(10), dp(16), dp(10));
-        panel.setBackground(roundedBg(Color.WHITE, 12));
+        panel.setBackground(roundedBg(Color.WHITE, 10));
         return panel;
     }
 
@@ -302,7 +318,7 @@ public final class SettingsActivity extends Activity {
         github.setText("打开 GitHub");
         github.setAllCaps(false);
         github.setTextColor(Color.WHITE);
-        github.setBackground(roundedBg(COLOR_PRIMARY, 14));
+        github.setBackground(roundedBg(COLOR_PRIMARY, 10));
         github.setMinHeight(dp(48));
         github.setPadding(dp(16), 0, dp(16), 0);
         github.setOnClickListener(v -> openExternalLink("https://github.com/ImKani/HyperOS3FocusRestore"));
@@ -347,34 +363,202 @@ public final class SettingsActivity extends Activity {
 
     private void showForcePackagesDialog() {
         if (!pendingIslandCompat) return;
-        final List<ApplicationInfo> apps = new ArrayList<>();
-        apps.addAll(getPackageManager().getInstalledApplications(0));
-        Collections.sort(apps, new Comparator<ApplicationInfo>() {
-            @Override public int compare(ApplicationInfo a, ApplicationInfo b) {
-                String left = String.valueOf(a.loadLabel(getPackageManager()));
-                String right = String.valueOf(b.loadLabel(getPackageManager()));
-                return left.compareToIgnoreCase(right);
-            }
-        });
-        CharSequence[] labels = new CharSequence[apps.size()];
-        boolean[] checked = new boolean[apps.size()];
-        for (int i = 0; i < apps.size(); i++) {
-            ApplicationInfo app = apps.get(i);
-            labels[i] = String.valueOf(app.loadLabel(getPackageManager())) + "\\n" + app.packageName;
-            checked[i] = pendingForcePackages.contains(app.packageName);
+        dialogAllApps = readCachedApps();
+        dialogVisibleApps.clear();
+        dialogSelectedPackages = new HashSet<>(pendingForcePackages);
+        dialogAppsLoaded = !dialogAllApps.isEmpty();
+
+        final Dialog dialog = new Dialog(this);
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        dialog.setContentView(createWhitelistDialogView(dialog));
+        Window window = dialog.getWindow();
+        if (window != null) window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        dialog.show();
+        filterDialogApps();
+        window = dialog.getWindow();
+        if (window != null) {
+            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            window.setLayout((int) (getResources().getDisplayMetrics().widthPixels * 0.92f),
+                    (int) (getResources().getDisplayMetrics().heightPixels * 0.82f));
         }
-        new AlertDialog.Builder(this)
-                .setTitle("强制转换超级岛应用")
-                .setMultiChoiceItems(labels, checked, (dialog, which, isChecked) -> {
-                    String packageName = apps.get(which).packageName;
-                    if (isChecked) pendingForcePackages.add(packageName);
-                    else pendingForcePackages.remove(packageName);
-                    forcePackagesButton.setText(forcePackagesLabel());
-                    markPending();
-                })
-                .setPositiveButton("完成", null)
-                .setNegativeButton("取消", null)
-                .show();
+    }
+
+    private View createWhitelistDialogView(final Dialog dialog) {
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackground(roundedBg(Color.WHITE, 10));
+        root.setPadding(dp(16), dp(16), dp(16), dp(8));
+        TextView title = text("强制转换超级岛应用", 18, COLOR_TEXT_PRIMARY);
+        title.setTypeface(title.getTypeface(), 1);
+        root.addView(title, matchWrap(dp(8)));
+
+        dialogSearchInput = input("刷新后搜索应用名称或包名");
+        dialogSearchInput.setTextSize(14);
+        dialogSearchInput.setMinHeight(dp(48));
+        dialogSearchInput.addTextChangedListener(new TextWatcher() {
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
+            public void onTextChanged(CharSequence s, int start, int before, int count) { filterDialogApps(); }
+            public void afterTextChanged(Editable s) { }
+        });
+        root.addView(dialogSearchInput, matchWrap(dp(6)));
+
+        LinearLayout options = new LinearLayout(this);
+        options.setGravity(Gravity.CENTER_VERTICAL);
+        dialogShowSystemSwitch = new Switch(this);
+        dialogShowSystemSwitch.setText("显示系统应用");
+        dialogShowSystemSwitch.setTextSize(14);
+        styleSwitch(dialogShowSystemSwitch);
+        dialogShowSystemSwitch.setOnCheckedChangeListener((button, checked) -> filterDialogApps());
+        options.addView(dialogShowSystemSwitch, new LinearLayout.LayoutParams(0, dp(48), 1f));
+        Button refresh = new Button(this);
+        refresh.setText("刷新");
+        refresh.setAllCaps(false);
+        refresh.setTextColor(COLOR_PRIMARY);
+        refresh.setBackground(roundedBg(COLOR_PRIMARY_LIGHT, 10));
+        refresh.setMinHeight(dp(40));
+        refresh.setOnClickListener(v -> loadDialogApps());
+        options.addView(refresh, new LinearLayout.LayoutParams(dp(72), dp(44)));
+        root.addView(options, matchWrap(dp(4)));
+
+        dialogListView = new ListView(this);
+        dialogListView.setDivider(null);
+        dialogListView.setDividerHeight(0);
+        dialogAdapter = new ForcePackageAdapter();
+        dialogListView.setAdapter(dialogAdapter);
+        dialogListView.setVisibility(View.GONE);
+        dialogListView.setOnItemClickListener((parent, view, position, id) -> {
+            ApplicationInfo app = dialogVisibleApps.get(position);
+            if (!dialogSelectedPackages.add(app.packageName)) dialogSelectedPackages.remove(app.packageName);
+            filterDialogApps();
+        });
+        root.addView(dialogListView, new LinearLayout.LayoutParams(-1, 0, 1f));
+
+        dialogEmptyView = text("尚未加载应用，请点击“刷新”", 14, COLOR_TEXT_SECONDARY);
+        dialogEmptyView.setGravity(Gravity.CENTER);
+        root.addView(dialogEmptyView, new LinearLayout.LayoutParams(-1, 0, 1f));
+
+        LinearLayout buttons = new LinearLayout(this);
+        buttons.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+        Button cancel = new Button(this);
+        cancel.setText("取消"); cancel.setAllCaps(false); cancel.setTextColor(COLOR_TEXT_SECONDARY);
+        cancel.setBackgroundColor(Color.TRANSPARENT); cancel.setOnClickListener(v -> dialog.dismiss());
+        buttons.addView(cancel, new LinearLayout.LayoutParams(dp(76), dp(48)));
+        Button done = new Button(this);
+        done.setText("完成"); done.setAllCaps(false); done.setTextColor(Color.WHITE);
+        done.setBackground(roundedBg(COLOR_PRIMARY, 12));
+        done.setOnClickListener(v -> { pendingForcePackages = new HashSet<>(dialogSelectedPackages); updateForcePackagesButton(); markPending(); dialog.dismiss(); });
+        buttons.addView(done, new LinearLayout.LayoutParams(dp(76), dp(48)));
+        root.addView(buttons, matchWrap(0));
+        return root;
+    }
+
+    private void loadDialogApps() {
+        List<ApplicationInfo> refreshed = new ArrayList<>(getPackageManager().getInstalledApplications(0));
+        getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
+                .putString(FocusRestoreSettings.KEY_ISLAND_APP_CACHE, encodeAppCache(refreshed))
+                .apply();
+        dialogAllApps = refreshed;
+        dialogAppsLoaded = true;
+        filterDialogApps();
+    }
+
+    private List<ApplicationInfo> readCachedApps() {
+        String encoded = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                .getString(FocusRestoreSettings.KEY_ISLAND_APP_CACHE, "");
+        List<ApplicationInfo> result = new ArrayList<>();
+        if (encoded.length() == 0) return result;
+        for (String record : encoded.split("\\n")) {
+            String[] fields = record.split(java.util.regex.Pattern.quote(APP_CACHE_SEPARATOR), -1);
+            if (fields.length < 3) continue;
+            try {
+                ApplicationInfo app = new ApplicationInfo();
+                app.packageName = fields[0];
+                app.name = fields[1];
+                app.flags = Integer.parseInt(fields[2]);
+                result.add(app);
+            } catch (Throwable ignored) {
+            }
+        }
+        return result;
+    }
+
+    private String encodeAppCache(List<ApplicationInfo> apps) {
+        StringBuilder result = new StringBuilder();
+        for (ApplicationInfo app : apps) {
+            if (app == null || app.packageName == null) continue;
+            String label = String.valueOf(app.loadLabel(getPackageManager()))
+                    .replace(APP_CACHE_SEPARATOR, " ").replace("\\n", " ");
+            if (result.length() > 0) result.append('\n');
+            result.append(app.packageName).append(APP_CACHE_SEPARATOR)
+                    .append(label).append(APP_CACHE_SEPARATOR).append(app.flags);
+        }
+        return result.toString();
+    }
+
+    private void filterDialogApps() {
+        if (!dialogAppsLoaded || dialogAdapter == null) return;
+        String query = dialogSearchInput == null ? "" : dialogSearchInput.getText().toString().toLowerCase(Locale.getDefault()).trim();
+        boolean includeSystem = dialogShowSystemSwitch != null && dialogShowSystemSwitch.isChecked();
+        dialogVisibleApps = new ArrayList<>();
+        for (ApplicationInfo app : dialogAllApps) {
+            boolean system = (app.flags & (ApplicationInfo.FLAG_SYSTEM | ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) != 0;
+            if (!includeSystem && system && !dialogSelectedPackages.contains(app.packageName)) continue;
+            String label = String.valueOf(app.loadLabel(getPackageManager()));
+            if (query.length() > 0 && !label.toLowerCase(Locale.getDefault()).contains(query)
+                    && !app.packageName.toLowerCase(Locale.getDefault()).contains(query)) continue;
+            dialogVisibleApps.add(app);
+        }
+        Collections.sort(dialogVisibleApps, (a, b) -> {
+            boolean as = dialogSelectedPackages.contains(a.packageName), bs = dialogSelectedPackages.contains(b.packageName);
+            if (as != bs) return as ? -1 : 1;
+            return String.valueOf(a.loadLabel(getPackageManager())).compareToIgnoreCase(String.valueOf(b.loadLabel(getPackageManager())));
+        });
+        dialogAdapter.notifyDataSetChanged();
+        boolean empty = dialogVisibleApps.isEmpty();
+        dialogListView.setVisibility(empty ? View.GONE : View.VISIBLE);
+        dialogEmptyView.setVisibility(empty ? View.VISIBLE : View.GONE);
+        if (empty) dialogEmptyView.setText(dialogAppsLoaded ? "没有找到匹配的应用" : "尚未加载应用，请点击“刷新”");
+    }
+
+    private final class ForcePackageAdapter extends BaseAdapter {
+        public int getCount() { return dialogVisibleApps.size(); }
+        public ApplicationInfo getItem(int position) { return dialogVisibleApps.get(position); }
+        public long getItemId(int position) { return position; }
+        public View getView(int position, View convertView, android.view.ViewGroup parent) {
+            LinearLayout row;
+            TextView name;
+            TextView packageName;
+            View accent;
+            if (convertView instanceof LinearLayout && ((LinearLayout) convertView).getChildCount() == 2) {
+                row = (LinearLayout) convertView;
+                accent = row.getChildAt(0);
+                LinearLayout textBox = (LinearLayout) row.getChildAt(1);
+                name = (TextView) textBox.getChildAt(0);
+                packageName = (TextView) textBox.getChildAt(1);
+            } else {
+                row = new LinearLayout(SettingsActivity.this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                row.setGravity(Gravity.CENTER_VERTICAL);
+                accent = new View(SettingsActivity.this);
+                row.addView(accent, new LinearLayout.LayoutParams(dp(4), -1));
+                LinearLayout textBox = new LinearLayout(SettingsActivity.this);
+                textBox.setOrientation(LinearLayout.VERTICAL);
+                textBox.setPadding(dp(14), dp(8), dp(12), dp(8));
+                name = text("", 15, COLOR_TEXT_PRIMARY);
+                name.setTypeface(name.getTypeface(), 1);
+                packageName = text("", 12, COLOR_TEXT_SECONDARY);
+                textBox.addView(name, matchWrap(1));
+                textBox.addView(packageName, matchWrap(0));
+                row.addView(textBox, new LinearLayout.LayoutParams(0, -2, 1f));
+            }
+            ApplicationInfo app = getItem(position);
+            name.setText(String.valueOf(app.loadLabel(getPackageManager())));
+            packageName.setText(app.packageName);
+            boolean selected = dialogSelectedPackages.contains(app.packageName);
+            row.setBackground(roundedBg(selected ? Color.rgb(210, 229, 255) : Color.WHITE, 10));
+            accent.setBackgroundColor(selected ? COLOR_PRIMARY : Color.TRANSPARENT);
+            return row;
+        }
     }
 
     private EditText input(String hint) {
@@ -434,7 +618,7 @@ public final class SettingsActivity extends Activity {
         for (int i = 0; i < navButtons.length; i++) {
             Button button = navButtons[i];
             boolean active = i == selected;
-            button.setBackground(active ? roundedBg(COLOR_PRIMARY_LIGHT, 14) : roundedBg(Color.TRANSPARENT, 14));
+            button.setBackground(active ? roundedBg(COLOR_PRIMARY_LIGHT, 10) : roundedBg(Color.TRANSPARENT, 14));
             button.setTextColor(active ? COLOR_PRIMARY : COLOR_TEXT_SECONDARY);
         }
     }
