@@ -8,7 +8,7 @@
 - Android 模块：`app`
 - Application ID：`com.hyperos3.focusrestore`
 - Java 包名：`com.hyperos3.focusrestore`
-- 当前版本：`0.12.2`
+- 当前版本：`0.12.3`
 - 当前 Git 分支：`master`
 - 远程仓库：`https://github.com/ImKani/HyperOS3FocusRestore.git`
 - 默认不执行 `git push`，除非用户明确要求。
@@ -52,8 +52,8 @@ $env:GRADLE_USER_HOME = "C:\Users\Kani\Desktop\FocusRestoreLSPosed\.gradle-temp"
 
 ## 输出文件
 
-- Debug APK：`app\build\outputs\apk\debug\HyperOS3FocusRestore-0.12.2-debug.apk`
-- Release APK：`app\build\outputs\apk\release\HyperOS3FocusRestore-0.12.2-release.apk`
+- Debug APK：`app\build\outputs\apk\debug\HyperOS3FocusRestore-0.12.3-debug.apk`
+- Release APK：`app\build\outputs\apk\release\HyperOS3FocusRestore-0.12.3-release.apk`
 - APK 文件被 `.gitignore` 忽略，不提交到 Git；发布时作为 GitHub Release 资产上传。
 - 当前 Release APK 是本地测试构建，不代表使用正式生产签名。
 
@@ -89,7 +89,7 @@ keyPassword 'android'
 5. 构建后使用以下命令检查证书：
 
 ```powershell
-& "C:\Users\Kani\Desktop\Android\Sdk\build-tools\36.0.0\apksigner.bat" verify --print-certs "app\build\outputs\apk\debug\HyperOS3FocusRestore-0.12.2-debug.apk"
+& "C:\Users\Kani\Desktop\Android\Sdk\build-tools\36.0.0\apksigner.bat" verify --print-certs "app\build\outputs\apk\debug\HyperOS3FocusRestore-0.12.3-debug.apk"
 ```
 
 预期 SHA-256 必须是：
