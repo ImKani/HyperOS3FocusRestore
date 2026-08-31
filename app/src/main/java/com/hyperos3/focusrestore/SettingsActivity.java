@@ -277,16 +277,18 @@ public final class SettingsActivity extends Activity {
         sideSeparatorInput = input("默认：·，允许留空");
         sideSeparatorInput.setText(pendingSideSeparator);
         customPanel.addView(sideSeparatorInput, matchWrap(0));
+        root.addView(customPanel, matchWrap(dp(12)));
+        LinearLayout whitelistPanel = panel();
+        whitelistPanel.addView(text("超级岛强制转换白名单", 15, COLOR_TEXT_PRIMARY), matchWrap(dp(2)));
         forcePackagesButton = new Button(this);
         forcePackagesButton.setText(forcePackagesLabel());
         forcePackagesButton.setAllCaps(false);
         forcePackagesButton.setTextSize(14);
         forcePackagesButton.setOnClickListener(v -> showForcePackagesDialog());
-        customPanel.addView(forcePackagesButton, matchWrap(dp(8)));
-        root.addView(customPanel, matchWrap(dp(12)));
-        TextView customHint = text("通用连接符用于同一元素的标题、时间、说明和进度拼接；左右连接符只用于超级岛左侧与右侧之间。两项都允许留空。修改后请点击顶部保存，并重启 SystemUI 或设备生效。", 13, COLOR_TEXT_SECONDARY);
+        whitelistPanel.addView(forcePackagesButton, matchWrap(0));
+        root.addView(whitelistPanel, matchWrap(dp(12)));
+        TextView customHint = text("通用连接符用于同一元素的标题、时间、说明和进度拼接；左右连接符只用于超级岛左侧与右侧之间。两项都允许留空。", 13, COLOR_TEXT_SECONDARY);
         customHint.setPadding(dp(12), 0, dp(12), dp(8));
-        customHint.setText("通用连接符用于同一元素的标题、时间、说明和进度拼接；左右连接符只用于超级岛左侧与右侧之间。白名单仅在“转换超级岛内容为焦点通知”开启时生效；选中的应用即使同时带有 Focus RemoteViews，也会强制优先转换超级岛协议。默认转换开关关闭，白名单按钮为浅色禁用状态。修改后请点击顶部保存，并重启 SystemUI 或设备生效。");
         root.addView(customHint, matchWrap(dp(8)));
         updateForcePackagesButton();
         statusHint = text("修改后点击顶部保存，再重启 SystemUI 或设备生效。", 14, COLOR_TEXT_SECONDARY);
@@ -346,9 +348,7 @@ public final class SettingsActivity extends Activity {
     private void showForcePackagesDialog() {
         if (!pendingIslandCompat) return;
         final List<ApplicationInfo> apps = new ArrayList<>();
-        for (ApplicationInfo app : getPackageManager().getInstalledApplications(0)) {
-            if (getPackageManager().getLaunchIntentForPackage(app.packageName) != null) apps.add(app);
-        }
+        apps.addAll(getPackageManager().getInstalledApplications(0));
         Collections.sort(apps, new Comparator<ApplicationInfo>() {
             @Override public int compare(ApplicationInfo a, ApplicationInfo b) {
                 String left = String.valueOf(a.loadLabel(getPackageManager()));
