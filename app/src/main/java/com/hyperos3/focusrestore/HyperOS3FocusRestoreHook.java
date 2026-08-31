@@ -46,8 +46,8 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
     private int widthDp = 160;
     private boolean islandCompat;
     private boolean allowFocusClick;
-    private static String islandSeparator = SettingsActivity.DEFAULT_ISLAND_SEPARATOR;
-    private static String islandSideSeparator = SettingsActivity.DEFAULT_ISLAND_SEPARATOR;
+    private static String islandSeparator = FocusRestoreSettings.DEFAULT_ISLAND_SEPARATOR;
+    private static String islandSideSeparator = FocusRestoreSettings.DEFAULT_ISLAND_SEPARATOR;
     private int providerSettingsState = -1;
     private TextView pendingMarqueeText;
     private Runnable pendingMarqueeRunnable;

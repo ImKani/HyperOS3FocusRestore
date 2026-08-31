@@ -10,8 +10,8 @@ public final class SettingsProvider extends ContentProvider {
     static final String AUTHORITY = "com.hyperos3.focusrestore.settings";
     static final Uri URI = Uri.parse("content://" + AUTHORITY + "/config");
     static final String[] COLUMNS = {"limit_text_width", "text_width_dp", "marquee_delay_ms", "compat_retry", "island_compat", "island_separator", "allow_focus_click", "island_general_separator", "island_side_separator"};
-    static final String KEY_MARQUEE_DELAY_MS = "marquee_delay_ms";
-    static final int DEFAULT_MARQUEE_DELAY_MS = 200;
+    static final String KEY_MARQUEE_DELAY_MS = FocusRestoreSettings.KEY_MARQUEE_DELAY_MS;
+    static final int DEFAULT_MARQUEE_DELAY_MS = FocusRestoreSettings.DEFAULT_MARQUEE_DELAY_MS;
 
     @Override
     public boolean onCreate() {
@@ -23,23 +23,16 @@ public final class SettingsProvider extends ContentProvider {
                         String[] selectionArgs, String sortOrder) {
         if (!URI.equals(uri) || getContext() == null) return null;
         android.content.SharedPreferences preferences = getContext().getSharedPreferences(
-                SettingsActivity.PREFS_NAME, 0);
-        boolean limit = preferences.getBoolean(SettingsActivity.KEY_LIMIT_WIDTH, true);
-        int width = preferences.getInt(SettingsActivity.KEY_WIDTH_DP, SettingsActivity.DEFAULT_WIDTH_DP);
-        int delay = preferences.getInt(KEY_MARQUEE_DELAY_MS, DEFAULT_MARQUEE_DELAY_MS);
-        boolean compatRetry = preferences.getBoolean(SettingsActivity.KEY_COMPAT_RETRY, false);
-        boolean islandCompat = preferences.getBoolean(SettingsActivity.KEY_ISLAND_COMPAT, false);
-        boolean allowFocusClick = preferences.getBoolean(SettingsActivity.KEY_ALLOW_FOCUS_CLICK, false);
-        String generalSeparator = preferences.getString(SettingsActivity.KEY_ISLAND_GENERAL_SEPARATOR,
-                preferences.getString(SettingsActivity.KEY_ISLAND_SEPARATOR, SettingsActivity.DEFAULT_ISLAND_SEPARATOR));
-        String sideSeparator = preferences.getString(SettingsActivity.KEY_ISLAND_SIDE_SEPARATOR,
-                preferences.getString(SettingsActivity.KEY_ISLAND_SEPARATOR, SettingsActivity.DEFAULT_ISLAND_SEPARATOR));
+                FocusRestoreSettings.PREFS_NAME, 0);
+        FocusRestoreSettings settings = FocusRestoreSettings.fromPreferences(preferences);
+        String legacySeparator = preferences.getString(FocusRestoreSettings.KEY_ISLAND_SEPARATOR,
+                FocusRestoreSettings.DEFAULT_ISLAND_SEPARATOR);
         MatrixCursor cursor = new MatrixCursor(COLUMNS);
-        String legacySeparator = preferences.getString(SettingsActivity.KEY_ISLAND_SEPARATOR,
-                SettingsActivity.DEFAULT_ISLAND_SEPARATOR);
-        cursor.addRow(new Object[]{limit ? 1 : 0, width, delay, compatRetry ? 1 : 0,
-                islandCompat ? 1 : 0, legacySeparator, allowFocusClick ? 1 : 0,
-                generalSeparator, sideSeparator});
+        cursor.addRow(new Object[]{settings.limitWidth ? 1 : 0, settings.widthDp,
+                settings.marqueeDelayMs, settings.compatRetry ? 1 : 0,
+                settings.islandCompat ? 1 : 0, legacySeparator,
+                settings.allowFocusClick ? 1 : 0, settings.islandGeneralSeparator,
+                settings.islandSideSeparator});
         return cursor;
     }
 

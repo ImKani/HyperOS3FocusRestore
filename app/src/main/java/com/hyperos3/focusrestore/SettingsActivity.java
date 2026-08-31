@@ -24,28 +24,39 @@ import android.widget.Switch;
 import android.widget.TextView;
 
 public final class SettingsActivity extends Activity {
-    static final String PREFS_NAME = "com.hyperos3.focusrestore_preferences";
-    static final String KEY_LIMIT_WIDTH = "limit_text_width";
-    static final String KEY_WIDTH_DP = "text_width_dp";
-    static final String KEY_MARQUEE_DELAY_MS = "marquee_delay_ms";
-    static final String KEY_COMPAT_RETRY = "compat_retry";
-    static final String KEY_ISLAND_COMPAT = "island_compat";
-    static final String KEY_ISLAND_SEPARATOR = "island_separator";
-    static final String KEY_ALLOW_FOCUS_CLICK = "allow_focus_click";
-    static final String KEY_ISLAND_GENERAL_SEPARATOR = "island_general_separator";
-    static final String KEY_ISLAND_SIDE_SEPARATOR = "island_side_separator";
-    static final String DEFAULT_ISLAND_SEPARATOR = "·";
-    static final int DEFAULT_WIDTH_DP = 160;
-    static final int MIN_WIDTH_DP = 80;
-    static final int MAX_WIDTH_DP = 400;
-    static final int DEFAULT_MARQUEE_DELAY_MS = 200;
+    // Deprecated aliases retained for the existing Hook source/API surface.
+    static final String PREFS_NAME = FocusRestoreSettings.PREFS_NAME;
+    static final String KEY_LIMIT_WIDTH = FocusRestoreSettings.KEY_LIMIT_WIDTH;
+    static final String KEY_WIDTH_DP = FocusRestoreSettings.KEY_WIDTH_DP;
+    static final String KEY_MARQUEE_DELAY_MS = FocusRestoreSettings.KEY_MARQUEE_DELAY_MS;
+    static final String KEY_COMPAT_RETRY = FocusRestoreSettings.KEY_COMPAT_RETRY;
+    static final String KEY_ISLAND_COMPAT = FocusRestoreSettings.KEY_ISLAND_COMPAT;
+    static final String KEY_ISLAND_SEPARATOR = FocusRestoreSettings.KEY_ISLAND_SEPARATOR;
+    static final String KEY_ALLOW_FOCUS_CLICK = FocusRestoreSettings.KEY_ALLOW_FOCUS_CLICK;
+    static final String KEY_ISLAND_GENERAL_SEPARATOR = FocusRestoreSettings.KEY_ISLAND_GENERAL_SEPARATOR;
+    static final String KEY_ISLAND_SIDE_SEPARATOR = FocusRestoreSettings.KEY_ISLAND_SIDE_SEPARATOR;
+    static final String DEFAULT_ISLAND_SEPARATOR = FocusRestoreSettings.DEFAULT_ISLAND_SEPARATOR;
+    static final int DEFAULT_WIDTH_DP = FocusRestoreSettings.DEFAULT_WIDTH_DP;
+    static final int MIN_WIDTH_DP = FocusRestoreSettings.MIN_WIDTH_DP;
+    static final int MAX_WIDTH_DP = FocusRestoreSettings.MAX_WIDTH_DP;
+    static final int DEFAULT_MARQUEE_DELAY_MS = FocusRestoreSettings.DEFAULT_MARQUEE_DELAY_MS;
 
     private SharedPreferences preferences;
+    private FocusRestoreSettings settings;
     private LinearLayout pageContainer;
     private TextView pageTitle;
     private TextView statusHint;
     private Button saveButton;
+    private LinearLayout bottomNav;
+    private Button[] navButtons;
     private int currentPage;
+
+    private static final int COLOR_PRIMARY = Color.rgb(26, 115, 232);
+    private static final int COLOR_PRIMARY_LIGHT = Color.rgb(232, 240, 254);
+    private static final int COLOR_BACKGROUND = Color.rgb(248, 249, 250);
+    private static final int COLOR_TEXT_PRIMARY = Color.rgb(32, 33, 36);
+    private static final int COLOR_TEXT_SECONDARY = Color.rgb(95, 99, 104);
+    private static final int COLOR_DIVIDER = Color.rgb(218, 220, 224);
 
     private Switch manualWidthSwitch;
     private SeekBar widthSeekBar;
@@ -74,12 +85,14 @@ public final class SettingsActivity extends Activity {
     private View createContent() {
         LinearLayout outer = new LinearLayout(this);
         outer.setOrientation(LinearLayout.VERTICAL);
-        outer.setBackgroundColor(Color.rgb(248, 249, 250));
-        outer.addView(createTopBar(), new LinearLayout.LayoutParams(-1, dp(64)));
+        outer.setBackgroundColor(COLOR_BACKGROUND);
+        View topBar = createTopBar();
+        outer.addView(topBar, new LinearLayout.LayoutParams(-1, dp(64)));
         pageContainer = new LinearLayout(this);
         pageContainer.setOrientation(LinearLayout.VERTICAL);
         outer.addView(pageContainer, new LinearLayout.LayoutParams(-1, 0, 1f));
-        outer.addView(createBottomNavigation(), new LinearLayout.LayoutParams(-1, dp(64)));
+        bottomNav = (LinearLayout) createBottomNavigation();
+        outer.addView(bottomNav, new LinearLayout.LayoutParams(-1, dp(64)));
         return outer;
     }
 
@@ -102,11 +115,13 @@ public final class SettingsActivity extends Activity {
         saveButton = new Button(this);
         saveButton.setText("保存");
         saveButton.setTextSize(14);
-        saveButton.setTextColor(Color.rgb(26, 115, 232));
+        saveButton.setTextColor(Color.WHITE);
+        saveButton.setBackground(roundedBg(COLOR_PRIMARY, 14));
         saveButton.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_save_floppy, 0, 0, 0);
         saveButton.setCompoundDrawablePadding(dp(4));
         saveButton.setAllCaps(false);
         saveButton.setMinWidth(dp(68));
+        saveButton.setPadding(dp(8), 0, dp(8), 0);
         saveButton.setOnClickListener(v -> saveSettings());
         bar.addView(saveButton, new LinearLayout.LayoutParams(dp(76), -1));
         return bar;
@@ -115,8 +130,10 @@ public final class SettingsActivity extends Activity {
     private View createBottomNavigation() {
         LinearLayout nav = new LinearLayout(this);
         nav.setGravity(Gravity.CENTER);
+        nav.setBackgroundColor(Color.WHITE);
         nav.setPadding(dp(8), dp(4), dp(8), dp(4));
         String[] names = {"设置", "自定义", "关于"};
+        navButtons = new Button[names.length];
         for (int i = 0; i < names.length; i++) {
             final int page = i;
             Button item = new Button(this);
@@ -124,7 +141,9 @@ public final class SettingsActivity extends Activity {
             item.setTextSize(14);
             item.setAllCaps(false);
             item.setMinHeight(0);
+            item.setPadding(dp(8), 0, dp(8), 0);
             item.setOnClickListener(v -> showPage(page));
+            navButtons[i] = item;
             nav.addView(item, new LinearLayout.LayoutParams(0, -1, 1f));
         }
         return nav;
@@ -136,6 +155,7 @@ public final class SettingsActivity extends Activity {
         pageContainer.removeAllViews();
         pageTitle.setText(page == 0 ? "设置" : page == 1 ? "自定义" : "关于");
         saveButton.setVisibility(page == 2 ? View.GONE : View.VISIBLE);
+        updateNavButtons(page);
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         LinearLayout content = new LinearLayout(this);
@@ -157,6 +177,7 @@ public final class SettingsActivity extends Activity {
         widthValue = (TextView) widthRow.getChildAt(1);
         root.addView(widthRow, matchWrap(0));
         widthSeekBar = new SeekBar(this);
+        styleSeekBar(widthSeekBar);
         widthSeekBar.setMax(MAX_WIDTH_DP - MIN_WIDTH_DP);
         root.addView(widthSeekBar, matchWrap(dp(4)));
         root.addView(rangeRow("80 dp", "400 dp"), matchWrap(dp(16)));
@@ -164,6 +185,7 @@ public final class SettingsActivity extends Activity {
         delayValue = (TextView) delayRow.getChildAt(1);
         root.addView(delayRow, matchWrap(0));
         delaySeekBar = new SeekBar(this);
+        styleSeekBar(delaySeekBar);
         delaySeekBar.setMax(50);
         root.addView(delaySeekBar, matchWrap(dp(2)));
         root.addView(rangeRow("0 秒", "5 秒"), matchWrap(dp(12)));
@@ -232,17 +254,29 @@ public final class SettingsActivity extends Activity {
         allowFocusClickSwitch.setOnCheckedChangeListener((b, c) -> { pendingAllowFocusClick = c; markPending(); });
     }
 
-    private EditText input(String hint) { EditText e = new EditText(this); e.setSingleLine(true); e.setTextSize(15); e.setHint(hint); e.setOnFocusChangeListener((v, focus) -> { if (!focus) markPending(); }); return e; }
+    private EditText input(String hint) {
+        EditText e = new EditText(this);
+        e.setSingleLine(true);
+        e.setTextSize(15);
+        e.setHint(hint);
+        e.setTextColor(COLOR_TEXT_PRIMARY);
+        e.setHintTextColor(COLOR_TEXT_SECONDARY);
+        e.setPadding(dp(14), 0, dp(14), 0);
+        e.setBackground(roundedBg(Color.WHITE, 10));
+        e.setOnFocusChangeListener((v, focus) -> { if (!focus) markPending(); });
+        return e;
+    }
 
     private void loadSettings() {
-        pendingManual = preferences.getBoolean(KEY_LIMIT_WIDTH, true);
-        pendingWidthDp = clamp(preferences.getInt(KEY_WIDTH_DP, DEFAULT_WIDTH_DP), MIN_WIDTH_DP, MAX_WIDTH_DP);
-        pendingDelayMs = clamp(preferences.getInt(KEY_MARQUEE_DELAY_MS, DEFAULT_MARQUEE_DELAY_MS), 0, 5000);
-        pendingCompatRetry = preferences.getBoolean(KEY_COMPAT_RETRY, false);
-        pendingIslandCompat = preferences.getBoolean(KEY_ISLAND_COMPAT, false);
-        pendingAllowFocusClick = preferences.getBoolean(KEY_ALLOW_FOCUS_CLICK, false);
-        pendingGeneralSeparator = preferences.getString(KEY_ISLAND_GENERAL_SEPARATOR, preferences.getString(KEY_ISLAND_SEPARATOR, DEFAULT_ISLAND_SEPARATOR));
-        pendingSideSeparator = preferences.getString(KEY_ISLAND_SIDE_SEPARATOR, preferences.getString(KEY_ISLAND_SEPARATOR, DEFAULT_ISLAND_SEPARATOR));
+        settings = FocusRestoreSettings.fromPreferences(preferences);
+        pendingManual = settings.limitWidth;
+        pendingWidthDp = settings.widthDp;
+        pendingDelayMs = settings.marqueeDelayMs;
+        pendingCompatRetry = settings.compatRetry;
+        pendingIslandCompat = settings.islandCompat;
+        pendingAllowFocusClick = settings.allowFocusClick;
+        pendingGeneralSeparator = settings.islandGeneralSeparator;
+        pendingSideSeparator = settings.islandSideSeparator;
     }
 
     private void captureCurrentInputs() {
@@ -253,19 +287,63 @@ public final class SettingsActivity extends Activity {
     private void saveSettings() {
         if (generalSeparatorInput != null) pendingGeneralSeparator = generalSeparatorInput.getText().toString();
         if (sideSeparatorInput != null) pendingSideSeparator = sideSeparatorInput.getText().toString();
-        preferences.edit().putBoolean(KEY_LIMIT_WIDTH, pendingManual).putInt(KEY_WIDTH_DP, pendingWidthDp)
-                .putInt(KEY_MARQUEE_DELAY_MS, pendingDelayMs).putBoolean(KEY_COMPAT_RETRY, pendingCompatRetry)
-                .putBoolean(KEY_ISLAND_COMPAT, pendingIslandCompat).putBoolean(KEY_ALLOW_FOCUS_CLICK, pendingAllowFocusClick)
-                .putString(KEY_ISLAND_GENERAL_SEPARATOR, pendingGeneralSeparator).putString(KEY_ISLAND_SIDE_SEPARATOR, pendingSideSeparator)
-                .putString(KEY_ISLAND_SEPARATOR, pendingGeneralSeparator).commit();
+        settings = FocusRestoreSettings.withValues(pendingManual, pendingWidthDp, pendingDelayMs,
+                pendingCompatRetry, pendingIslandCompat, pendingAllowFocusClick,
+                pendingGeneralSeparator, pendingSideSeparator);
+        settings.save(preferences);
         if (statusHint != null) statusHint.setText("设置已保存。请重启 SystemUI 或设备后生效。");
     }
 
     private void markPending() { if (statusHint != null) statusHint.setText("有未保存的修改，请点击顶部“保存”。"); }
-    private int clamp(int v, int min, int max) { return Math.max(min, Math.min(max, v)); }
     private LinearLayout valueRow(String label, String value) { LinearLayout row = new LinearLayout(this); row.setGravity(Gravity.CENTER_VERTICAL); row.addView(text(label, 15, Color.rgb(60,64,67)), new LinearLayout.LayoutParams(0, -2, 1f)); TextView val = text(value, 15, Color.rgb(26,115,232)); val.setTypeface(val.getTypeface(), 1); row.addView(val); return row; }
     private LinearLayout rangeRow(String left, String right) { LinearLayout row = new LinearLayout(this); row.addView(text(left, 12, Color.GRAY), new LinearLayout.LayoutParams(0, -2, 1f)); TextView r = text(right, 12, Color.GRAY); r.setGravity(Gravity.END); row.addView(r, new LinearLayout.LayoutParams(0, -2, 1f)); return row; }
-    private void styleSwitch(Switch s) { if (Build.VERSION.SDK_INT >= 21) { int[][] states = {new int[]{android.R.attr.state_checked}, new int[]{}}; s.setThumbTintList(new ColorStateList(states, new int[]{Color.rgb(26,115,232), Color.rgb(189,193,198)})); s.setTrackTintList(new ColorStateList(states, new int[]{Color.rgb(144,184,244), Color.rgb(218,220,224)})); } }
+    private Drawable roundedBg(int color, float radiusDp) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setColor(color);
+        drawable.setCornerRadius(dp((int) radiusDp));
+        return drawable;
+    }
+
+    private void updateNavButtons(int selected) {
+        if (navButtons == null) return;
+        for (int i = 0; i < navButtons.length; i++) {
+            Button button = navButtons[i];
+            boolean active = i == selected;
+            button.setBackground(active ? roundedBg(COLOR_PRIMARY_LIGHT, 14) : roundedBg(Color.TRANSPARENT, 14));
+            button.setTextColor(active ? COLOR_PRIMARY : COLOR_TEXT_SECONDARY);
+        }
+    }
+
+    private void applyTopInsets(View view) {
+        final int left = view.getPaddingLeft();
+        final int top = view.getPaddingTop();
+        final int right = view.getPaddingRight();
+        final int bottom = view.getPaddingBottom();
+        view.setOnApplyWindowInsetsListener((v, insets) -> {
+            if (Build.VERSION.SDK_INT >= 23) {
+                v.setPadding(left, top + insets.getSystemWindowInsetTop(), right, bottom);
+            }
+            return insets;
+        });
+        view.requestApplyInsets();
+    }
+
+    private void applyBottomInsets(View view) {
+        final int left = view.getPaddingLeft();
+        final int top = view.getPaddingTop();
+        final int right = view.getPaddingRight();
+        final int bottom = view.getPaddingBottom();
+        view.setOnApplyWindowInsetsListener((v, insets) -> {
+            if (Build.VERSION.SDK_INT >= 23) {
+                v.setPadding(left, top, right, bottom + insets.getSystemWindowInsetBottom());
+            }
+            return insets;
+        });
+        view.requestApplyInsets();
+    }
+
+    private void styleSwitch(Switch s) { if (Build.VERSION.SDK_INT >= 21) { int[][] states = {new int[]{android.R.attr.state_checked}, new int[]{}}; s.setThumbTintList(new ColorStateList(states, new int[]{Color.WHITE, Color.rgb(189,193,198)})); s.setTrackTintList(new ColorStateList(states, new int[]{COLOR_PRIMARY, Color.rgb(218,220,224)})); } }
+    private void styleSeekBar(SeekBar s) { if (Build.VERSION.SDK_INT >= 21) { s.setProgressTintList(ColorStateList.valueOf(COLOR_PRIMARY)); s.setThumbTintList(ColorStateList.valueOf(COLOR_PRIMARY)); } }
     private void openExternalLink(String url) { try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); } catch (ActivityNotFoundException e) { if (statusHint != null) statusHint.setText("设备没有可用的浏览器，无法打开链接。"); } }
     private void configureLightSystemBars(Window w) { w.setStatusBarColor(Color.rgb(248,249,250)); w.setNavigationBarColor(Color.rgb(248,249,250)); if (Build.VERSION.SDK_INT >= 23) { int f = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR; if (Build.VERSION.SDK_INT >= 26) f |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR; w.getDecorView().setSystemUiVisibility(f); } }
     private TextView text(String value, int size, int color) { TextView v = new TextView(this); v.setText(value); v.setTextSize(size); v.setTextColor(color); return v; }
