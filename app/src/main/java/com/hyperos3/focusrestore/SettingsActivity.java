@@ -6,6 +6,7 @@ import android.content.ContentResolver;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.net.Uri;
+import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
@@ -14,6 +15,7 @@ import android.view.View;
 import android.view.Window;
 import android.os.Build;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
@@ -31,6 +33,8 @@ public final class SettingsActivity extends Activity {
     static final String KEY_MARQUEE_DELAY_MS = "marquee_delay_ms";
     static final String KEY_COMPAT_RETRY = "compat_retry";
     static final String KEY_ISLAND_COMPAT = "island_compat";
+    static final String KEY_ISLAND_SEPARATOR = "island_separator";
+    static final String DEFAULT_ISLAND_SEPARATOR = "·";
     static final int DEFAULT_MARQUEE_DELAY_MS = 200;
 
     private SharedPreferences preferences;
@@ -42,7 +46,9 @@ public final class SettingsActivity extends Activity {
     private TextView delayValue;
     private Switch compatRetrySwitch;
     private Switch islandCompatSwitch;
+    private EditText islandSeparatorInput;
     private Button saveButton;
+    private String pendingIslandSeparator;
     private int pendingDelayMs;
     private boolean pendingManual;
     private int pendingWidthDp;
@@ -82,6 +88,7 @@ public final class SettingsActivity extends Activity {
         manualWidthSwitch = new Switch(this);
         manualWidthSwitch.setText("限制原生焦点歌词宽度");
         manualWidthSwitch.setTextSize(16);
+        styleSwitch(manualWidthSwitch);
         root.addView(manualWidthSwitch, matchWrap(dp(10)));
 
         LinearLayout widthRow = new LinearLayout(this);
@@ -125,6 +132,7 @@ public final class SettingsActivity extends Activity {
         compatRetrySwitch = new Switch(this);
         compatRetrySwitch.setText("启用兼容重试模式");
         compatRetrySwitch.setTextSize(16);
+        styleSwitch(compatRetrySwitch);
         root.addView(compatRetrySwitch, matchWrap(dp(2)));
         TextView retryHint = text("默认关闭：每条歌词只启动 1 次，画面更稳定。开启后会最多启动 2 次，可能出现轻微抖动，仅在歌词偶尔不滚动时使用。", 13, Color.rgb(95, 99, 104));
         retryHint.setPadding(dp(12), 0, dp(12), dp(8));
@@ -133,6 +141,7 @@ public final class SettingsActivity extends Activity {
         islandCompatSwitch = new Switch(this);
         islandCompatSwitch.setText("超级岛内容转焦点通知");
         islandCompatSwitch.setTextSize(16);
+        styleSwitch(islandCompatSwitch);
         root.addView(islandCompatSwitch, matchWrap(dp(2)));
         TextView islandHint = text("默认关闭。开启后关闭原生超级岛，并尝试把取件码、配送进度、检票口等主体内容转换为焦点通知；转换出的通知点击不会启动应用或关闭通知。", 13, Color.rgb(95, 99, 104));
         islandHint.setPadding(dp(12), 0, dp(12), dp(8));
@@ -141,6 +150,15 @@ public final class SettingsActivity extends Activity {
         TextView stageHint = text("系统灵动舞台隐藏请使用其他工具，本模块不负责隐藏。", 13, Color.rgb(95, 99, 104));
         stageHint.setPadding(dp(12), 0, dp(12), dp(8));
         root.addView(stageHint, matchWrap(dp(8)));
+
+        TextView separatorLabel = text("左右内容连接符", 15, Color.rgb(60, 64, 67));
+        separatorLabel.setTypeface(separatorLabel.getTypeface(), 1);
+        root.addView(separatorLabel, matchWrap(dp(2)));
+        islandSeparatorInput = new EditText(this);
+        islandSeparatorInput.setSingleLine(true);
+        islandSeparatorInput.setHint("默认：·，留空则直接拼接");
+        islandSeparatorInput.setTextSize(15);
+        root.addView(islandSeparatorInput, matchWrap(dp(8)));
 
         saveButton = new Button(this);
         saveButton.setText("保存设置");
@@ -156,8 +174,14 @@ public final class SettingsActivity extends Activity {
 
         Button aboutButton = new Button(this);
         aboutButton.setText("关于项目 · 打开 GitHub 仓库");
+        aboutButton.setTextColor(Color.rgb(26, 115, 232));
         aboutButton.setAllCaps(false);
-        aboutButton.setMinHeight(dp(44));
+        aboutButton.setMinHeight(dp(48));
+        aboutButton.setPadding(dp(20), 0, dp(20), 0);
+        GradientDrawable aboutBackground = new GradientDrawable();
+        aboutBackground.setColor(Color.rgb(232, 240, 254));
+        aboutBackground.setCornerRadius(dp(14));
+        aboutButton.setBackground(aboutBackground);
         aboutButton.setOnClickListener(view -> openExternalLink("https://github.com/ImKani/HyperOS3FocusRestore"));
         root.addView(aboutButton, matchWrap(dp(2)));
 
@@ -196,6 +220,12 @@ public final class SettingsActivity extends Activity {
             pendingIslandCompat = checked;
             showPending();
         });
+        islandSeparatorInput.setOnFocusChangeListener((view, hasFocus) -> {
+            if (!hasFocus) {
+                pendingIslandSeparator = islandSeparatorInput.getText().toString();
+                showPending();
+            }
+        });
         saveButton.setOnClickListener(view -> saveSettings());
         delaySeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
@@ -218,11 +248,13 @@ public final class SettingsActivity extends Activity {
         int delay = Math.max(0, Math.min(5000, preferences.getInt(KEY_MARQUEE_DELAY_MS, DEFAULT_MARQUEE_DELAY_MS)));
         boolean compatRetry = preferences.getBoolean(KEY_COMPAT_RETRY, false);
         boolean islandCompat = preferences.getBoolean(KEY_ISLAND_COMPAT, false);
+        String separator = preferences.getString(KEY_ISLAND_SEPARATOR, DEFAULT_ISLAND_SEPARATOR);
         pendingManual = manual;
         pendingWidthDp = width;
         pendingDelayMs = delay;
         pendingCompatRetry = compatRetry;
         pendingIslandCompat = islandCompat;
+        pendingIslandSeparator = separator;
         manualWidthSwitch.setChecked(manual);
         widthSeekBar.setProgress(width - MIN_WIDTH_DP);
         widthValue.setText(width + " dp");
@@ -230,6 +262,7 @@ public final class SettingsActivity extends Activity {
         delayValue.setText(String.format(java.util.Locale.US, "%.1f 秒", delay / 1000f));
         compatRetrySwitch.setChecked(compatRetry);
         islandCompatSwitch.setChecked(islandCompat);
+        islandSeparatorInput.setText(separator);
     }
 
     private void showPending() {
@@ -237,14 +270,28 @@ public final class SettingsActivity extends Activity {
     }
 
     private void saveSettings() {
+        pendingIslandSeparator = islandSeparatorInput.getText().toString();
         preferences.edit()
                 .putBoolean(KEY_LIMIT_WIDTH, pendingManual)
                 .putInt(KEY_WIDTH_DP, pendingWidthDp)
                 .putInt(KEY_MARQUEE_DELAY_MS, pendingDelayMs)
                 .putBoolean(KEY_COMPAT_RETRY, pendingCompatRetry)
                 .putBoolean(KEY_ISLAND_COMPAT, pendingIslandCompat)
+                .putString(KEY_ISLAND_SEPARATOR, pendingIslandSeparator)
                 .commit();
         restartHint.setText("设置已保存。请重启 SystemUI 或设备后生效。");
+    }
+
+    private void styleSwitch(Switch switchView) {
+        if (Build.VERSION.SDK_INT < 21) return;
+        int[][] states = new int[][]{
+                new int[]{android.R.attr.state_checked},
+                new int[]{}
+        };
+        int[] thumbColors = new int[]{Color.rgb(26, 115, 232), Color.rgb(189, 193, 198)};
+        int[] trackColors = new int[]{Color.rgb(144, 184, 244), Color.rgb(218, 220, 224)};
+        switchView.setThumbTintList(new ColorStateList(states, thumbColors));
+        switchView.setTrackTintList(new ColorStateList(states, trackColors));
     }
 
     private void openExternalLink(String url) {
