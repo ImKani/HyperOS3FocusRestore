@@ -21,6 +21,8 @@ public final class FocusRestoreSettings {
     public static final String KEY_ISLAND_SIDE_SEPARATOR = "island_side_separator";
     public static final String KEY_ISLAND_FORCE_PACKAGES = "island_force_packages";
     public static final String KEY_ISLAND_APP_CACHE = "island_app_cache";
+    public static final String KEY_DISABLE_ISLAND_PROPERTY = "disable_island_property";
+    public static final String KEY_DISABLE_ISLAND_FEATURE_CACHE = "disable_island_feature_cache";
     public static final String PACKAGE_SET_SEPARATOR = "\u001f";
 
     public static final boolean DEFAULT_LIMIT_WIDTH = true;
@@ -30,6 +32,8 @@ public final class FocusRestoreSettings {
     public static final int DEFAULT_MARQUEE_DELAY_MS = 200;
     public static final boolean DEFAULT_COMPAT_RETRY = false;
     public static final boolean DEFAULT_ISLAND_COMPAT = false;
+    public static final boolean DEFAULT_DISABLE_ISLAND_PROPERTY = true;
+    public static final boolean DEFAULT_DISABLE_ISLAND_FEATURE_CACHE = true;
     public static final boolean DEFAULT_ALLOW_FOCUS_CLICK = false;
     public static final String DEFAULT_ISLAND_SEPARATOR = "·";
 
@@ -38,6 +42,8 @@ public final class FocusRestoreSettings {
     public final int marqueeDelayMs;
     public final boolean compatRetry;
     public final boolean islandCompat;
+    public final boolean disableIslandProperty;
+    public final boolean disableIslandFeatureCache;
     public final boolean allowFocusClick;
     public final String islandGeneralSeparator;
     public final String islandSideSeparator;
@@ -45,6 +51,7 @@ public final class FocusRestoreSettings {
 
     private FocusRestoreSettings(boolean limitWidth, int widthDp, int marqueeDelayMs,
                                  boolean compatRetry, boolean islandCompat,
+                                 boolean disableIslandProperty, boolean disableIslandFeatureCache,
                                  boolean allowFocusClick, String islandGeneralSeparator,
                                  String islandSideSeparator, Set<String> islandForcePackages) {
         this.limitWidth = limitWidth;
@@ -52,6 +59,8 @@ public final class FocusRestoreSettings {
         this.marqueeDelayMs = clamp(marqueeDelayMs, 0, 5000);
         this.compatRetry = compatRetry;
         this.islandCompat = islandCompat;
+        this.disableIslandProperty = disableIslandProperty;
+        this.disableIslandFeatureCache = disableIslandFeatureCache;
         this.allowFocusClick = allowFocusClick;
         this.islandGeneralSeparator = valueOrDefault(islandGeneralSeparator);
         this.islandSideSeparator = valueOrDefault(islandSideSeparator);
@@ -61,17 +70,19 @@ public final class FocusRestoreSettings {
     public static FocusRestoreSettings defaults() {
         return new FocusRestoreSettings(DEFAULT_LIMIT_WIDTH, DEFAULT_WIDTH_DP,
                 DEFAULT_MARQUEE_DELAY_MS, DEFAULT_COMPAT_RETRY, DEFAULT_ISLAND_COMPAT,
+                DEFAULT_DISABLE_ISLAND_PROPERTY, DEFAULT_DISABLE_ISLAND_FEATURE_CACHE,
                 DEFAULT_ALLOW_FOCUS_CLICK, DEFAULT_ISLAND_SEPARATOR, DEFAULT_ISLAND_SEPARATOR,
                 Collections.<String>emptySet());
     }
 
     public static FocusRestoreSettings withValues(boolean limitWidth, int widthDp, int marqueeDelayMs,
                                                   boolean compatRetry, boolean islandCompat,
+                                                  boolean disableIslandProperty, boolean disableIslandFeatureCache,
                                                   boolean allowFocusClick, String islandGeneralSeparator,
                                                   String islandSideSeparator, Set<String> islandForcePackages) {
         return new FocusRestoreSettings(limitWidth, widthDp, marqueeDelayMs, compatRetry,
-                islandCompat, allowFocusClick, islandGeneralSeparator, islandSideSeparator,
-                islandForcePackages);
+                islandCompat, disableIslandProperty, disableIslandFeatureCache,
+                allowFocusClick, islandGeneralSeparator, islandSideSeparator, islandForcePackages);
     }
 
     public static FocusRestoreSettings fromPreferences(SharedPreferences preferences) {
@@ -82,6 +93,8 @@ public final class FocusRestoreSettings {
                 preferences.getInt(KEY_MARQUEE_DELAY_MS, DEFAULT_MARQUEE_DELAY_MS),
                 preferences.getBoolean(KEY_COMPAT_RETRY, DEFAULT_COMPAT_RETRY),
                 preferences.getBoolean(KEY_ISLAND_COMPAT, DEFAULT_ISLAND_COMPAT),
+                preferences.getBoolean(KEY_DISABLE_ISLAND_PROPERTY, DEFAULT_DISABLE_ISLAND_PROPERTY),
+                preferences.getBoolean(KEY_DISABLE_ISLAND_FEATURE_CACHE, DEFAULT_DISABLE_ISLAND_FEATURE_CACHE),
                 preferences.getBoolean(KEY_ALLOW_FOCUS_CLICK, DEFAULT_ALLOW_FOCUS_CLICK),
                 preferences.getString(KEY_ISLAND_GENERAL_SEPARATOR, legacy),
                 preferences.getString(KEY_ISLAND_SIDE_SEPARATOR, legacy),
@@ -95,6 +108,8 @@ public final class FocusRestoreSettings {
                 .putInt(KEY_MARQUEE_DELAY_MS, marqueeDelayMs)
                 .putBoolean(KEY_COMPAT_RETRY, compatRetry)
                 .putBoolean(KEY_ISLAND_COMPAT, islandCompat)
+                .putBoolean(KEY_DISABLE_ISLAND_PROPERTY, disableIslandProperty)
+                .putBoolean(KEY_DISABLE_ISLAND_FEATURE_CACHE, disableIslandFeatureCache)
                 .putBoolean(KEY_ALLOW_FOCUS_CLICK, allowFocusClick)
                 .putString(KEY_ISLAND_GENERAL_SEPARATOR, islandGeneralSeparator)
                 .putString(KEY_ISLAND_SIDE_SEPARATOR, islandSideSeparator)

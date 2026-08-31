@@ -83,10 +83,13 @@ public final class SettingsActivity extends Activity {
     private TextView delayValue;
     private Switch compatRetrySwitch;
     private Switch islandCompatSwitch;
+    private Switch disableIslandPropertySwitch;
+    private Switch disableIslandFeatureCacheSwitch;
     private Switch allowFocusClickSwitch;
     private EditText generalSeparatorInput;
     private EditText sideSeparatorInput;
-    private boolean pendingManual, pendingCompatRetry, pendingIslandCompat, pendingAllowFocusClick;
+    private boolean pendingManual, pendingCompatRetry, pendingIslandCompat,
+            pendingDisableIslandProperty, pendingDisableIslandFeatureCache, pendingAllowFocusClick;
     private int pendingWidthDp, pendingDelayMs;
     private String pendingGeneralSeparator, pendingSideSeparator;
     private Set<String> pendingForcePackages = new HashSet<>();
@@ -249,7 +252,17 @@ public final class SettingsActivity extends Activity {
         islandCompatSwitch.setText("转换超级岛内容为焦点通知");
         styleSwitch(islandCompatSwitch);
         compatPanel.addView(islandCompatSwitch, matchWrap(dp(4)));
-        allowFocusClickSwitch = new Switch(this);
+        if (com.hyperos3.focusrestore.BuildConfig.DEBUG) {
+             disableIslandPropertySwitch = new Switch(this);
+             disableIslandPropertySwitch.setText("调试：覆盖 feature.island.debug=false");
+             styleSwitch(disableIslandPropertySwitch);
+             compatPanel.addView(disableIslandPropertySwitch, matchWrap(dp(4)));
+             disableIslandFeatureCacheSwitch = new Switch(this);
+             disableIslandFeatureCacheSwitch.setText("调试：禁用 FEATURE_DYNAMIC_ISLAND");
+             styleSwitch(disableIslandFeatureCacheSwitch);
+             compatPanel.addView(disableIslandFeatureCacheSwitch, matchWrap(dp(4)));
+         }
+         allowFocusClickSwitch = new Switch(this);
         allowFocusClickSwitch.setText("允许焦点通知点击");
         styleSwitch(allowFocusClickSwitch);
         compatPanel.addView(allowFocusClickSwitch, matchWrap(0));
@@ -278,6 +291,10 @@ public final class SettingsActivity extends Activity {
         delayValue.setText(String.format(java.util.Locale.US, "%.1f 秒", pendingDelayMs / 1000f));
         compatRetrySwitch.setChecked(pendingCompatRetry);
         islandCompatSwitch.setChecked(pendingIslandCompat);
+        if (com.hyperos3.focusrestore.BuildConfig.DEBUG) {
+            disableIslandPropertySwitch.setChecked(pendingDisableIslandProperty);
+            disableIslandFeatureCacheSwitch.setChecked(pendingDisableIslandFeatureCache);
+        }
         allowFocusClickSwitch.setChecked(pendingAllowFocusClick);
         installSettingsListeners();
     }
@@ -343,6 +360,10 @@ public final class SettingsActivity extends Activity {
             updateForcePackagesButton();
             markPending();
         });
+        if (com.hyperos3.focusrestore.BuildConfig.DEBUG) {
+            disableIslandPropertySwitch.setOnCheckedChangeListener((b, c) -> { pendingDisableIslandProperty = c; markPending(); });
+            disableIslandFeatureCacheSwitch.setOnCheckedChangeListener((b, c) -> { pendingDisableIslandFeatureCache = c; markPending(); });
+        }
         allowFocusClickSwitch.setOnCheckedChangeListener((b, c) -> { pendingAllowFocusClick = c; markPending(); });
     }
 
@@ -582,6 +603,8 @@ public final class SettingsActivity extends Activity {
         pendingDelayMs = settings.marqueeDelayMs;
         pendingCompatRetry = settings.compatRetry;
         pendingIslandCompat = settings.islandCompat;
+        pendingDisableIslandProperty = settings.disableIslandProperty;
+        pendingDisableIslandFeatureCache = settings.disableIslandFeatureCache;
         pendingAllowFocusClick = settings.allowFocusClick;
         pendingGeneralSeparator = settings.islandGeneralSeparator;
         pendingSideSeparator = settings.islandSideSeparator;
@@ -597,8 +620,9 @@ public final class SettingsActivity extends Activity {
         if (generalSeparatorInput != null) pendingGeneralSeparator = generalSeparatorInput.getText().toString();
         if (sideSeparatorInput != null) pendingSideSeparator = sideSeparatorInput.getText().toString();
         settings = FocusRestoreSettings.withValues(pendingManual, pendingWidthDp, pendingDelayMs,
-                pendingCompatRetry, pendingIslandCompat, pendingAllowFocusClick,
-                pendingGeneralSeparator, pendingSideSeparator, pendingForcePackages);
+                pendingCompatRetry, pendingIslandCompat, pendingDisableIslandProperty,
+                pendingDisableIslandFeatureCache, pendingAllowFocusClick, pendingGeneralSeparator,
+                pendingSideSeparator, pendingForcePackages);
         settings.save(preferences);
         if (statusHint != null) statusHint.setText("设置已保存。请重启 SystemUI 或设备后生效。");
     }

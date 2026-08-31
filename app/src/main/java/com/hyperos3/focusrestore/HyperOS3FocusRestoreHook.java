@@ -1,6 +1,8 @@
 package com.hyperos3.focusrestore;
 
+import android.app.Application;
 import android.app.Notification;
+import android.content.Context;
 import android.os.Bundle;
 import android.os.Parcelable;
 import android.os.SystemClock;
@@ -42,6 +44,7 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
     private static final int MAX_CONVERTED_KEYS = 128;
 
     private ClassLoader classLoader;
+    private volatile Context systemUiContext;
     // FocusedTextView.startMarqueeLocal() copies this value into TextView.
     // -1 keeps long lyrics moving instead of stopping after one pass.
     private static final int MARQUEE_REPEAT_LIMIT = -1;
@@ -64,6 +67,7 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
         }
 
         classLoader = lpparam.classLoader;
+        hookApplicationAttach();
         reloadSettings(true);
         log("loading in " + lpparam.packageName + "/" + lpparam.processName
                 + " settings=" + currentSettings.describe());
@@ -93,6 +97,24 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
                 + " " + FocusReflection.capability(focusedText, "startMarqueeLocal"));
     }
 
+    private void hookApplicationAttach() {
+        try {
+            XposedHelpers.findAndHookMethod(Application.class, "attach", Context.class,
+                    new XC_MethodHook() {
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) {
+                            if (param.args[0] instanceof Context) {
+                                systemUiContext = ((Context) param.args[0]).getApplicationContext();
+                                log("SystemUI application context available; reloading settings");
+                                reloadSettings(true);
+                            }
+                        }
+                    });
+        } catch (Throwable t) {
+            error("hookApplicationAttach", t);
+        }
+    }
+
     private void hookDynamicIslandSystemProperty() {
         try {
             XposedHelpers.findAndHookMethod(
@@ -104,7 +126,8 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
                     new XC_MethodHook() {
                         @Override
                         protected void beforeHookedMethod(MethodHookParam param) {
-                            if ("feature.island.debug".equals(param.args[0])) {
+                            if ((!com.hyperos3.focusrestore.BuildConfig.DEBUG || currentSettings.disableIslandProperty)
+                                    && "feature.island.debug".equals(param.args[0])) {
                                 param.setResult(false);
                                 log("Dynamic Island property override: feature.island.debug=false");
                             }
@@ -116,6 +139,7 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
     }
 
     private void disableDynamicIslandFeatureCache() {
+        if (com.hyperos3.focusrestore.BuildConfig.DEBUG && !currentSettings.disableIslandFeatureCache) return;
         try {
             Class<?> config = FocusReflection.findClass(
                     "com.android.systemui.statusbar.notification.DynamicFeatureConfig",
@@ -234,13 +258,20 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
 
     private void readProviderSettings() {
         try {
-            Object context = XposedHelpers.callStaticMethod(
-                    Class.forName("android.app.ActivityThread"), "currentApplication");
+            Context context = systemUiContext;
             if (context == null) {
-                logProviderSettingsState(false, "currentApplication unavailable");
+                Object currentApplication = XposedHelpers.callStaticMethod(
+                        Class.forName("android.app.ActivityThread"), "currentApplication");
+                if (currentApplication instanceof Context) {
+                    context = (Context) currentApplication;
+                    systemUiContext = context.getApplicationContext();
+                }
+            }
+            if (context == null) {
+                logProviderSettingsState(false, "application context unavailable");
                 return;
             }
-            HookSettings next = HookSettingsReader.read((android.content.Context) context);
+            HookSettings next = HookSettingsReader.read(context);
             if (next == null) {
                 logProviderSettingsState(false, "provider query returned no settings");
                 return;
@@ -557,7 +588,21 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
 
     private boolean shouldConvert(FocusData data) {
         if (data == null || !data.hasIslandParam || !currentSettings.islandCompat) return false;
-        return !data.isOriginalFocus || currentSettings.islandForcePackages.contains(data.packageName);
+        return !data.isOriginalFocus
+                || currentSettings.islandForcePackages.contains(data.packageName)
+                || isSmsVerificationCode(data);
+    }
+
+    private boolean isSmsVerificationCode(FocusData data) {
+        if (data == null || !"com.android.mms".equals(data.packageName)
+                || TextUtils.isEmpty(data.islandParam)) return false;
+        try {
+            JSONObject root = new JSONObject(data.islandParam);
+            return root.optInt("protocol", -1) == 1
+                    && "verifyCode".equals(root.optString("scene"));
+        } catch (Throwable ignored) {
+            return false;
+        }
     }
 
     private boolean hasConvertibleIslandContent(FocusData data) {
