@@ -14,6 +14,7 @@ import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
 import android.view.Window;
+import android.view.WindowInsets;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageView;
@@ -57,6 +58,7 @@ public final class SettingsActivity extends Activity {
     private static final int COLOR_TEXT_PRIMARY = Color.rgb(32, 33, 36);
     private static final int COLOR_TEXT_SECONDARY = Color.rgb(95, 99, 104);
     private static final int COLOR_DIVIDER = Color.rgb(218, 220, 224);
+    private static final int COLOR_INPUT_BACKGROUND = Color.rgb(242, 244, 247);
 
     private Switch manualWidthSwitch;
     private SeekBar widthSeekBar;
@@ -86,6 +88,7 @@ public final class SettingsActivity extends Activity {
         LinearLayout outer = new LinearLayout(this);
         outer.setOrientation(LinearLayout.VERTICAL);
         outer.setBackgroundColor(COLOR_BACKGROUND);
+        applyRootInsets(outer);
         View topBar = createTopBar();
         outer.addView(topBar, new LinearLayout.LayoutParams(-1, dp(64)));
         pageContainer = new LinearLayout(this);
@@ -100,6 +103,8 @@ public final class SettingsActivity extends Activity {
         LinearLayout bar = new LinearLayout(this);
         bar.setGravity(Gravity.CENTER_VERTICAL);
         bar.setPadding(dp(16), 0, dp(8), 0);
+        bar.setBackgroundColor(Color.WHITE);
+        if (Build.VERSION.SDK_INT >= 21) bar.setElevation(dp(2));
         ImageView icon = new ImageView(this);
         Drawable appIcon = getApplicationInfo().loadIcon(getPackageManager());
         icon.setImageDrawable(appIcon);
@@ -123,14 +128,16 @@ public final class SettingsActivity extends Activity {
         saveButton.setMinWidth(dp(68));
         saveButton.setPadding(dp(8), 0, dp(8), 0);
         saveButton.setOnClickListener(v -> saveSettings());
-        bar.addView(saveButton, new LinearLayout.LayoutParams(dp(76), -1));
+        LinearLayout.LayoutParams saveParams = new LinearLayout.LayoutParams(dp(76), dp(48));
+        saveParams.gravity = Gravity.CENTER_VERTICAL;
+        bar.addView(saveButton, saveParams);
         return bar;
     }
 
     private View createBottomNavigation() {
         LinearLayout nav = new LinearLayout(this);
         nav.setGravity(Gravity.CENTER);
-        nav.setBackgroundColor(Color.WHITE);
+        nav.setBackgroundColor(COLOR_BACKGROUND);
         nav.setPadding(dp(8), dp(4), dp(8), dp(4));
         String[] names = {"设置", "自定义", "关于"};
         navButtons = new Button[names.length];
@@ -168,40 +175,71 @@ public final class SettingsActivity extends Activity {
         pageContainer.addView(scroll, new LinearLayout.LayoutParams(-1, -1));
     }
 
+    private LinearLayout panel() {
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(16), dp(10), dp(16), dp(10));
+        panel.setBackground(roundedBg(Color.WHITE, 12));
+        return panel;
+    }
+
     private void buildSettingsPage(LinearLayout root) {
+        TextView intro = text("焦点通知显示与兼容设置", 14, COLOR_TEXT_SECONDARY);
+        root.addView(intro, matchWrap(dp(10)));
+        LinearLayout widthPanel = panel();
         manualWidthSwitch = new Switch(this);
         manualWidthSwitch.setText("限制原生焦点歌词宽度");
         styleSwitch(manualWidthSwitch);
-        root.addView(manualWidthSwitch, matchWrap(dp(10)));
+        widthPanel.addView(manualWidthSwitch, matchWrap(dp(4)));
         LinearLayout widthRow = valueRow("最大文字宽度", "160 dp");
         widthValue = (TextView) widthRow.getChildAt(1);
-        root.addView(widthRow, matchWrap(0));
+        widthPanel.addView(widthRow, matchWrap(0));
         widthSeekBar = new SeekBar(this);
         styleSeekBar(widthSeekBar);
         widthSeekBar.setMax(MAX_WIDTH_DP - MIN_WIDTH_DP);
-        root.addView(widthSeekBar, matchWrap(dp(4)));
-        root.addView(rangeRow("80 dp", "400 dp"), matchWrap(dp(16)));
+        widthPanel.addView(widthSeekBar, matchWrap(dp(4)));
+        widthPanel.addView(rangeRow("80 dp", "400 dp"), matchWrap(0));
+        root.addView(widthPanel, matchWrap(dp(12)));
+        LinearLayout delayPanel = panel();
         LinearLayout delayRow = valueRow("滚动启动延迟", "0.2 秒");
         delayValue = (TextView) delayRow.getChildAt(1);
-        root.addView(delayRow, matchWrap(0));
+        delayPanel.addView(delayRow, matchWrap(0));
         delaySeekBar = new SeekBar(this);
         styleSeekBar(delaySeekBar);
         delaySeekBar.setMax(50);
-        root.addView(delaySeekBar, matchWrap(dp(2)));
-        root.addView(rangeRow("0 秒", "5 秒"), matchWrap(dp(12)));
+        delayPanel.addView(delaySeekBar, matchWrap(dp(2)));
+        delayPanel.addView(rangeRow("0 秒", "5 秒"), matchWrap(0));
+        root.addView(delayPanel, matchWrap(dp(12)));
+        LinearLayout compatPanel = panel();
         compatRetrySwitch = new Switch(this);
         compatRetrySwitch.setText("启用兼容重试模式");
         styleSwitch(compatRetrySwitch);
-        root.addView(compatRetrySwitch, matchWrap(dp(8)));
+        compatPanel.addView(compatRetrySwitch, matchWrap(dp(4)));
         islandCompatSwitch = new Switch(this);
         islandCompatSwitch.setText("超级岛内容转焦点通知");
         styleSwitch(islandCompatSwitch);
-        root.addView(islandCompatSwitch, matchWrap(dp(8)));
+        compatPanel.addView(islandCompatSwitch, matchWrap(dp(4)));
         allowFocusClickSwitch = new Switch(this);
         allowFocusClickSwitch.setText("允许焦点通知点击");
         styleSwitch(allowFocusClickSwitch);
-        root.addView(allowFocusClickSwitch, matchWrap(dp(8)));
-        statusHint = text("修改后点击顶部保存，再重启 SystemUI 或设备生效。", 14, Color.rgb(95, 99, 104));
+        compatPanel.addView(allowFocusClickSwitch, matchWrap(0));
+        root.addView(compatPanel, matchWrap(dp(12)));
+        TextView widthNotice = text("• 宽度限制：默认开启，最大文字宽度为 160dp；关闭后恢复系统原生宽度测量。", 13, COLOR_TEXT_SECONDARY);
+        widthNotice.setPadding(dp(12), 0, dp(12), dp(4));
+        root.addView(widthNotice, matchWrap(0));
+        TextView delayNotice = text("• 滚动延迟：默认 0.2 秒，用于避免歌词布局刷新后立即启动造成显示抖动。", 13, COLOR_TEXT_SECONDARY);
+        delayNotice.setPadding(dp(12), 0, dp(12), dp(4));
+        root.addView(delayNotice, matchWrap(0));
+        TextView retryNotice = text("• 兼容重试：默认关闭；开启后歌词最多尝试启动两次，适合偶尔不滚动的 ROM，但可能产生轻微抖动。", 13, COLOR_TEXT_SECONDARY);
+        retryNotice.setPadding(dp(12), 0, dp(12), dp(4));
+        root.addView(retryNotice, matchWrap(0));
+        TextView clickWarning = text("• 点击风险：HyperOS 3 上基本所有焦点通知都不支持点击。点击可能导致焦点通知消失或不可见，相关系统逻辑也可能无法正常处理。默认关闭点击；只有确认接受风险后才建议开启。", 13, COLOR_TEXT_SECONDARY);
+        clickWarning.setPadding(dp(12), dp(4), dp(12), dp(8));
+        root.addView(clickWarning, matchWrap(dp(8)));
+        TextView islandNotice = text("超级岛转换只处理通知实际提供的协议内容，不负责隐藏系统灵动舞台；需要隐藏时请使用其他工具。修改后请点击顶部保存，并重启 SystemUI 或设备生效。", 13, COLOR_TEXT_SECONDARY);
+        islandNotice.setPadding(dp(12), 0, dp(12), dp(8));
+        root.addView(islandNotice, matchWrap(dp(8)));
+        statusHint = text("修改后点击顶部保存，再重启 SystemUI 或设备生效。", 14, COLOR_TEXT_SECONDARY);
         root.addView(statusHint, matchWrap(dp(8)));
         manualWidthSwitch.setChecked(pendingManual);
         widthSeekBar.setProgress(pendingWidthDp - MIN_WIDTH_DP);
@@ -215,24 +253,34 @@ public final class SettingsActivity extends Activity {
     }
 
     private void buildCustomPage(LinearLayout root) {
-        root.addView(text("超级岛内容连接符", 15, Color.rgb(60, 64, 67)), matchWrap(dp(2)));
+        root.addView(text("文本拼接和超级岛双侧内容设置", 14, COLOR_TEXT_SECONDARY), matchWrap(dp(10)));
+        LinearLayout customPanel = panel();
+        customPanel.addView(text("超级岛内容连接符", 15, COLOR_TEXT_PRIMARY), matchWrap(dp(2)));
         generalSeparatorInput = input("默认：·，允许留空");
         generalSeparatorInput.setText(pendingGeneralSeparator);
-        root.addView(generalSeparatorInput, matchWrap(dp(18)));
-        root.addView(text("左右超级岛内容连接符", 15, Color.rgb(60, 64, 67)), matchWrap(dp(2)));
+        customPanel.addView(generalSeparatorInput, matchWrap(dp(12)));
+        customPanel.addView(text("左右超级岛内容连接符", 15, COLOR_TEXT_PRIMARY), matchWrap(dp(2)));
         sideSeparatorInput = input("默认：·，允许留空");
         sideSeparatorInput.setText(pendingSideSeparator);
-        root.addView(sideSeparatorInput, matchWrap(dp(18)));
-        statusHint = text("修改后点击顶部保存，再重启 SystemUI 或设备生效。", 14, Color.rgb(95, 99, 104));
+        customPanel.addView(sideSeparatorInput, matchWrap(0));
+        root.addView(customPanel, matchWrap(dp(12)));
+        TextView customHint = text("通用连接符用于同一元素的标题、时间、说明和进度拼接；左右连接符只用于超级岛左侧与右侧之间。两项都允许留空。修改后请点击顶部保存，并重启 SystemUI 或设备生效。", 13, COLOR_TEXT_SECONDARY);
+        customHint.setPadding(dp(12), 0, dp(12), dp(8));
+        root.addView(customHint, matchWrap(dp(8)));
+        statusHint = text("修改后点击顶部保存，再重启 SystemUI 或设备生效。", 14, COLOR_TEXT_SECONDARY);
         root.addView(statusHint, matchWrap(dp(8)));
     }
 
     private void buildAboutPage(LinearLayout root) {
-        TextView about = text("焦点通知\n\n作者：ImKani\n酷安主页：https://www.coolapk.com/u/1205658\nGitHub：https://github.com/ImKani/HyperOS3FocusRestore", 15, Color.rgb(60, 64, 67));
+        TextView about = text("焦点通知\n\n用于 HyperOS 3 的实验性 LSPosed 模块，尝试恢复 HyperOS 2 的 Focus（焦点通知）状态栏显示路径。\n\n本模块由 AI 辅助反编译分析与编写，代码通过 LSPosed Hook 介入系统界面，存在 ROM 版本差异、系统崩溃、状态栏显示异常、功能失效、数据丢失或其他不可控风险。使用前请自行备份，并自行承担使用风险。模块不保证适用于所有设备、系统版本或第三方通知。\n\n\n作者：ImKani\n酷安主页：https://www.coolapk.com/u/1205658\nGitHub：https://github.com/ImKani/HyperOS3FocusRestore\n\n许可证：GNU General Public License v3.0 only（GPL-3.0-only）", 15, COLOR_TEXT_PRIMARY);
         root.addView(about, matchWrap(dp(18)));
         Button github = new Button(this);
         github.setText("打开 GitHub");
         github.setAllCaps(false);
+        github.setTextColor(Color.WHITE);
+        github.setBackground(roundedBg(COLOR_PRIMARY, 14));
+        github.setMinHeight(dp(48));
+        github.setPadding(dp(16), 0, dp(16), 0);
         github.setOnClickListener(v -> openExternalLink("https://github.com/ImKani/HyperOS3FocusRestore"));
         root.addView(github, matchWrap(dp(12)));
     }
@@ -257,12 +305,13 @@ public final class SettingsActivity extends Activity {
     private EditText input(String hint) {
         EditText e = new EditText(this);
         e.setSingleLine(true);
+        e.setMinHeight(dp(56));
         e.setTextSize(15);
         e.setHint(hint);
         e.setTextColor(COLOR_TEXT_PRIMARY);
         e.setHintTextColor(COLOR_TEXT_SECONDARY);
         e.setPadding(dp(14), 0, dp(14), 0);
-        e.setBackground(roundedBg(Color.WHITE, 10));
+        e.setBackground(roundedBg(COLOR_INPUT_BACKGROUND, 10));
         e.setOnFocusChangeListener((v, focus) -> { if (!focus) markPending(); });
         return e;
     }
@@ -312,6 +361,26 @@ public final class SettingsActivity extends Activity {
             button.setBackground(active ? roundedBg(COLOR_PRIMARY_LIGHT, 14) : roundedBg(Color.TRANSPARENT, 14));
             button.setTextColor(active ? COLOR_PRIMARY : COLOR_TEXT_SECONDARY);
         }
+    }
+
+    private void applyRootInsets(View view) {
+        final int left = view.getPaddingLeft();
+        final int top = view.getPaddingTop();
+        final int right = view.getPaddingRight();
+        final int bottom = view.getPaddingBottom();
+        view.setOnApplyWindowInsetsListener((v, insets) -> {
+            if (Build.VERSION.SDK_INT >= 23) {
+                int bottomInset = insets.getSystemWindowInsetBottom();
+                if (Build.VERSION.SDK_INT >= 29) {
+                    bottomInset = Math.max(bottomInset,
+                            insets.getSystemGestureInsets().bottom);
+                }
+                v.setPadding(left, top + insets.getSystemWindowInsetTop(), right,
+                        bottom + bottomInset);
+            }
+            return insets;
+        });
+        view.requestApplyInsets();
     }
 
     private void applyTopInsets(View view) {
