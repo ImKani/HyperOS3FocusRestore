@@ -11,6 +11,10 @@ app/build/
 *.apk
 *.aab
 
+# Local AI/build notes and release drafts
+PROJECT_ENVIRONMENT.md
+release-notes-*.md
+
 # OS/editor files
 .DS_Store
 Thumbs.db
