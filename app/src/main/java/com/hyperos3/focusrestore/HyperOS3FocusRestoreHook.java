@@ -1,5 +1,6 @@
 package com.hyperos3.focusrestore;
 
+import android.animation.ValueAnimator;
 import android.app.Application;
 import android.app.Notification;
 import android.content.Context;
@@ -8,6 +9,7 @@ import android.os.Bundle;
 import android.os.Parcelable;
 import android.os.SystemClock;
 import android.database.Cursor;
+import android.graphics.Rect;
 import org.json.JSONObject;
 import android.net.Uri;
 import android.text.TextUtils;
@@ -16,6 +18,8 @@ import android.widget.RemoteViews;
 import android.widget.TextView;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewParent;
+import android.view.animation.LinearInterpolator;
 
 import java.lang.reflect.Method;
 import java.util.Collections;
@@ -70,6 +74,7 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
     private int providerSettingsState = Integer.MIN_VALUE;
     private TextView pendingMarqueeText;
     private Runnable pendingMarqueeRunnable;
+    private ValueAnimator fallbackMarqueeAnimator;
     private long marqueeGeneration;
     private final Set<Object> convertedBeans = Collections.synchronizedSet(
             Collections.newSetFromMap(new WeakHashMap<>()));
@@ -385,9 +390,9 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
         }
     }
 
-    private void startNativeMarquee(TextView textView) {
+    private boolean startNativeMarquee(TextView textView) {
         try {
-            if (textView.getVisibility() != View.VISIBLE) return;
+            if (textView.getVisibility() != View.VISIBLE) return true;
             textView.setSingleLine(true);
             textView.setHorizontallyScrolling(true);
             textView.setEllipsize(TextUtils.TruncateAt.MARQUEE);
@@ -399,30 +404,101 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
             textView.setSelected(true);
             textView.setMarqueeRepeatLimit(MARQUEE_REPEAT_LIMIT);
             XposedHelpers.callMethod(textView, "startMarqueeLocal");
+            if (hasMarqueeOverflow(textView)) {
+                stopNativeMarquee(textView);
+                startFallbackMarquee(textView);
+            }
             log("started native focus marquee width=" + textView.getWidth()
                     + " measured=" + textView.getMeasuredWidth()
                     + " selected=" + textView.isSelected()
                     + " focused=" + textView.isFocused()
-                    + " textWidth=" + textView.getPaint().measureText(textView.getText().toString()));
+                    + " textWidth=" + textView.getPaint().measureText(textView.getText().toString())
+                    + " visibleContentWidth=" + getVisibleContentWidth(textView));
+            return textView.getWidth() > 0;
         } catch (Throwable t) {
             error("startNativeMarqueeText", t);
+            return true;
         }
     }
 
-    private void startNativeMarquee(TextView textView, int attempt) {
-        startNativeMarquee(textView);
+    private boolean startNativeMarquee(TextView textView, int attempt) {
+        boolean ready = startNativeMarquee(textView);
         log("native focus marquee attempt=" + attempt);
+        return ready;
     }
 
-    private boolean needsMarqueeRetry(TextView textView) {
-        if (textView.getVisibility() != View.VISIBLE) return false;
+    private boolean hasMarqueeOverflow(TextView textView) {
         float textWidth = textView.getPaint().measureText(textView.getText().toString());
-        int width = textView.getWidth();
-        boolean needed = textWidth > width;
-        log("marquee check textWidth=" + textWidth + " width=" + width
-                + " measured=" + textView.getMeasuredWidth()
-                + " scrollX=" + textView.getScrollX() + " needed=" + needed);
-        return needed;
+        float layoutWidth = textView.getLayout() == null
+                ? 0f : textView.getLayout().getLineWidth(0);
+        float availableWidth = getVisibleContentWidth(textView);
+        return availableWidth > 0f && Math.max(textWidth, layoutWidth) > availableWidth;
+    }
+
+    private float getVisibleContentWidth(TextView textView) {
+        float localWidth = textView.getWidth()
+                - textView.getCompoundPaddingLeft() - textView.getCompoundPaddingRight();
+        int[] location = new int[2];
+        textView.getLocationOnScreen(location);
+        int visibleLeft = location[0];
+        int visibleRight = visibleLeft + textView.getWidth();
+
+        Rect visibleRect = new Rect();
+        if (textView.getGlobalVisibleRect(visibleRect) && visibleRect.width() > 0) {
+            visibleLeft = Math.max(visibleLeft, visibleRect.left);
+            visibleRight = Math.min(visibleRight, visibleRect.right);
+        }
+
+        ViewParent ancestor = textView.getParent();
+        while (ancestor instanceof View && visibleRight > visibleLeft) {
+            View parent = (View) ancestor;
+            parent.getLocationOnScreen(location);
+            visibleLeft = Math.max(visibleLeft, location[0]);
+            visibleRight = Math.min(visibleRight, location[0] + parent.getWidth());
+            ancestor = parent.getParent();
+        }
+
+        float visibleWidth = visibleRight - visibleLeft
+                - textView.getCompoundPaddingLeft() - textView.getCompoundPaddingRight();
+        return Math.max(0f, Math.min(localWidth, visibleWidth));
+    }
+
+    private void stopNativeMarquee(TextView textView) {
+        try {
+            Object marquee = getField(textView, "mMarquee");
+            if (marquee != null) XposedHelpers.callMethod(marquee, "stop");
+        } catch (Throwable t) {
+            error("stopNativeMarquee", t);
+        }
+    }
+
+    private void startFallbackMarquee(TextView textView) {
+        try {
+            float textWidth = textView.getPaint().measureText(textView.getText().toString());
+            float layoutWidth = textView.getLayout() == null
+                    ? 0f : textView.getLayout().getLineWidth(0);
+            textWidth = Math.max(textWidth, layoutWidth);
+            float availableWidth = getVisibleContentWidth(textView);
+            final int distance = Math.round(textWidth - availableWidth);
+            if (distance <= 0) return;
+            if (fallbackMarqueeAnimator != null) fallbackMarqueeAnimator.cancel();
+            fallbackMarqueeAnimator = currentSettings.marqueeBounce
+                    ? ValueAnimator.ofInt(0, distance, 0)
+                    : ValueAnimator.ofInt(0, distance);
+            fallbackMarqueeAnimator.setDuration(Math.max(2500L, distance * 35L));
+            fallbackMarqueeAnimator.setInterpolator(new LinearInterpolator());
+            fallbackMarqueeAnimator.setRepeatCount(ValueAnimator.INFINITE);
+            fallbackMarqueeAnimator.addUpdateListener(animation -> {
+                if (textView.getVisibility() == View.VISIBLE) {
+                    textView.scrollTo((Integer) animation.getAnimatedValue(), 0);
+                }
+            });
+            fallbackMarqueeAnimator.start();
+            log("started fallback focus marquee textWidth=" + textWidth
+                    + " availableWidth=" + availableWidth + " distance=" + distance);
+        } catch (Throwable t) {
+            error("startFallbackMarquee", t);
+        }
     }
 
     private void hookFocusedTextMarquee() {
@@ -454,6 +530,11 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
             if (pendingMarqueeText != null && pendingMarqueeRunnable != null) {
                 pendingMarqueeText.removeCallbacks(pendingMarqueeRunnable);
             }
+            if (fallbackMarqueeAnimator != null) {
+                fallbackMarqueeAnimator.cancel();
+                fallbackMarqueeAnimator = null;
+            }
+            textView.scrollTo(0, 0);
             final long generation = ++marqueeGeneration;
             pendingMarqueeText = textView;
             pendingMarqueeRunnable = new Runnable() {
@@ -465,7 +546,17 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
                     }
                     if (Build.VERSION.SDK_INT >= 19 && !textView.isAttachedToWindow()) return;
                     attempts++;
-                    startNativeMarquee(textView, attempts);
+                    if (textView.getText() == null || textView.getText().length() == 0) {
+                        if (attempts < 3) textView.postDelayed(this, 100L);
+                        return;
+                    }
+                    boolean ready = startNativeMarquee(textView, attempts);
+                    // Wait briefly when RemoteViews has supplied text but the
+                    // final one-line layout or Marquee instance is not ready yet.
+                    if (!ready && attempts < 3) {
+                        textView.postDelayed(this, 100L);
+                        return;
+                    }
                     // Compatibility mode adds one retry for ROMs that reset
                     // marquee state immediately after the first native start.
                     if (currentSettings.compatRetry && attempts < 2) {

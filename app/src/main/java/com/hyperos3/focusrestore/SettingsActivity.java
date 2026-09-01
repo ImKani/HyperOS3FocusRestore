@@ -83,13 +83,14 @@ public final class SettingsActivity extends Activity {
     private SeekBar delaySeekBar;
     private TextView delayValue;
     private Switch compatRetrySwitch;
+    private Switch marqueeBounceSwitch;
     private Switch islandCompatSwitch;
     private Switch disableIslandPropertySwitch;
     private Switch disableIslandFeatureCacheSwitch;
     private Switch allowFocusClickSwitch;
     private EditText generalSeparatorInput;
     private EditText sideSeparatorInput;
-    private boolean pendingManual, pendingCompatRetry, pendingIslandCompat,
+    private boolean pendingManual, pendingCompatRetry, pendingMarqueeBounce, pendingIslandCompat,
             pendingDisableIslandProperty, pendingDisableIslandFeatureCache, pendingAllowFocusClick;
     private int pendingWidthDp, pendingDelayMs;
     private String pendingGeneralSeparator, pendingSideSeparator;
@@ -223,10 +224,10 @@ public final class SettingsActivity extends Activity {
         root.addView(intro, matchWrap(dp(10)));
         LinearLayout widthPanel = panel();
         manualWidthSwitch = new Switch(this);
-        manualWidthSwitch.setText("限制原生焦点歌词宽度");
+        manualWidthSwitch.setText("限制焦点通知宽度");
         styleSwitch(manualWidthSwitch);
         widthPanel.addView(manualWidthSwitch, matchWrap(dp(4)));
-        LinearLayout widthRow = valueRow("最大文字宽度", "160 dp");
+        LinearLayout widthRow = valueRow("最大焦点通知宽度", "160 dp");
         widthValue = (TextView) widthRow.getChildAt(1);
         widthPanel.addView(widthRow, matchWrap(0));
         widthSeekBar = new SeekBar(this);
@@ -249,33 +250,45 @@ public final class SettingsActivity extends Activity {
         compatRetrySwitch = new Switch(this);
         compatRetrySwitch.setText("启用兼容重试模式");
         styleSwitch(compatRetrySwitch);
-        compatPanel.addView(compatRetrySwitch, matchWrap(dp(4)));
-        islandCompatSwitch = new Switch(this);
+
+        marqueeBounceSwitch = new Switch(this);
+         marqueeBounceSwitch.setText("启用往返滚动");
+         styleSwitch(marqueeBounceSwitch);
+
+         islandCompatSwitch = new Switch(this);
         islandCompatSwitch.setText("转换超级岛内容为焦点通知");
         styleSwitch(islandCompatSwitch);
-        compatPanel.addView(islandCompatSwitch, matchWrap(dp(4)));
+
         if (com.hyperos3.focusrestore.BuildConfig.DEBUG) {
              disableIslandPropertySwitch = new Switch(this);
              disableIslandPropertySwitch.setText("调试：覆盖 feature.island.debug=false");
              styleSwitch(disableIslandPropertySwitch);
-             compatPanel.addView(disableIslandPropertySwitch, matchWrap(dp(4)));
+
              disableIslandFeatureCacheSwitch = new Switch(this);
              disableIslandFeatureCacheSwitch.setText("调试：禁用 FEATURE_DYNAMIC_ISLAND");
              styleSwitch(disableIslandFeatureCacheSwitch);
-             compatPanel.addView(disableIslandFeatureCacheSwitch, matchWrap(dp(4)));
+
          }
          allowFocusClickSwitch = new Switch(this);
         allowFocusClickSwitch.setText("允许焦点通知点击");
         styleSwitch(allowFocusClickSwitch);
-        compatPanel.addView(allowFocusClickSwitch, matchWrap(0));
+        compatPanel.addView(marqueeBounceSwitch, matchWrap(dp(8)));
+        compatPanel.addView(islandCompatSwitch, matchWrap(dp(8)));
+        compatPanel.addView(compatRetrySwitch, matchWrap(dp(8)));
+        compatPanel.addView(allowFocusClickSwitch,
+                matchWrap(com.hyperos3.focusrestore.BuildConfig.DEBUG ? dp(8) : 0));
+        if (com.hyperos3.focusrestore.BuildConfig.DEBUG) {
+            compatPanel.addView(disableIslandPropertySwitch, matchWrap(dp(8)));
+            compatPanel.addView(disableIslandFeatureCacheSwitch, matchWrap(0));
+        }
         root.addView(compatPanel, matchWrap(dp(12)));
-        TextView widthNotice = text("• 宽度限制：默认开启，最大文字宽度为 160dp；关闭后恢复系统原生宽度测量。", 13, COLOR_TEXT_SECONDARY);
+        TextView widthNotice = text("• 焦点通知宽度限制：默认开启，最大宽度为 160dp；关闭后恢复系统原生宽度测量。", 13, COLOR_TEXT_SECONDARY);
         widthNotice.setPadding(dp(12), 0, dp(12), dp(4));
         root.addView(widthNotice, matchWrap(0));
-        TextView delayNotice = text("• 滚动延迟：默认 0.2 秒，用于避免歌词布局刷新后立即启动造成显示抖动。", 13, COLOR_TEXT_SECONDARY);
+        TextView delayNotice = text("• 滚动延迟：默认 0.2 秒，用于避免焦点通知内容布局刷新后立即启动造成显示抖动。", 13, COLOR_TEXT_SECONDARY);
         delayNotice.setPadding(dp(12), 0, dp(12), dp(4));
         root.addView(delayNotice, matchWrap(0));
-        TextView retryNotice = text("• 兼容重试：默认关闭；开启后歌词最多尝试启动两次，适合偶尔不滚动的 ROM，但可能产生轻微抖动。", 13, COLOR_TEXT_SECONDARY);
+        TextView retryNotice = text("• 兼容重试：默认关闭；开启后焦点通知内容最多尝试启动两次，适合偶尔不滚动的 ROM，但可能产生轻微抖动。", 13, COLOR_TEXT_SECONDARY);
         retryNotice.setPadding(dp(12), 0, dp(12), dp(4));
         root.addView(retryNotice, matchWrap(0));
         TextView clickWarning = text("• 点击风险：HyperOS 3 上基本所有焦点通知都不支持点击。点击可能导致焦点通知消失或不可见，相关系统逻辑也可能无法正常处理。默认关闭点击；只有确认接受风险后才建议开启。", 13, COLOR_TEXT_SECONDARY);
@@ -292,6 +305,7 @@ public final class SettingsActivity extends Activity {
         delaySeekBar.setProgress(pendingDelayMs / 100);
         delayValue.setText(String.format(java.util.Locale.US, "%.1f 秒", pendingDelayMs / 1000f));
         compatRetrySwitch.setChecked(pendingCompatRetry);
+         marqueeBounceSwitch.setChecked(pendingMarqueeBounce);
         islandCompatSwitch.setChecked(pendingIslandCompat);
         if (com.hyperos3.focusrestore.BuildConfig.DEBUG) {
             disableIslandPropertySwitch.setChecked(pendingDisableIslandProperty);
@@ -357,6 +371,7 @@ public final class SettingsActivity extends Activity {
             public void onStopTrackingTouch(SeekBar s) { }
         });
         compatRetrySwitch.setOnCheckedChangeListener((b, c) -> { pendingCompatRetry = c; markPending(); });
+         marqueeBounceSwitch.setOnCheckedChangeListener((b, c) -> { pendingMarqueeBounce = c; markPending(); });
         islandCompatSwitch.setOnCheckedChangeListener((b, c) -> {
             pendingIslandCompat = c;
             updateForcePackagesButton();
@@ -638,6 +653,7 @@ public final class SettingsActivity extends Activity {
         pendingWidthDp = settings.widthDp;
         pendingDelayMs = settings.marqueeDelayMs;
         pendingCompatRetry = settings.compatRetry;
+         pendingMarqueeBounce = settings.marqueeBounce;
         pendingIslandCompat = settings.islandCompat;
         pendingDisableIslandProperty = settings.disableIslandProperty;
         pendingDisableIslandFeatureCache = settings.disableIslandFeatureCache;
@@ -656,7 +672,7 @@ public final class SettingsActivity extends Activity {
         if (generalSeparatorInput != null) pendingGeneralSeparator = generalSeparatorInput.getText().toString();
         if (sideSeparatorInput != null) pendingSideSeparator = sideSeparatorInput.getText().toString();
         settings = FocusRestoreSettings.withValues(pendingManual, pendingWidthDp, pendingDelayMs,
-                pendingCompatRetry, pendingIslandCompat, pendingDisableIslandProperty,
+                pendingCompatRetry, pendingMarqueeBounce, pendingIslandCompat, pendingDisableIslandProperty,
                 pendingDisableIslandFeatureCache, pendingAllowFocusClick, pendingGeneralSeparator,
                 pendingSideSeparator, pendingForcePackages);
         settings.save(preferences);

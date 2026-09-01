@@ -12,6 +12,7 @@ final class HookSettings {
     final int widthDp;
     final int marqueeDelayMs;
     final boolean compatRetry;
+    final boolean marqueeBounce;
     final boolean islandCompat;
     final boolean disableIslandProperty;
     final boolean disableIslandFeatureCache;
@@ -21,7 +22,7 @@ final class HookSettings {
     final Set<String> islandForcePackages;
 
     private HookSettings(boolean limitWidth, int widthDp, int marqueeDelayMs,
-                         boolean compatRetry, boolean islandCompat,
+                         boolean compatRetry, boolean marqueeBounce, boolean islandCompat,
                          boolean disableIslandProperty, boolean disableIslandFeatureCache,
                          boolean allowFocusClick, String generalSeparator, String sideSeparator,
                          Set<String> forcePackages) {
@@ -30,6 +31,7 @@ final class HookSettings {
                 FocusRestoreSettings.MAX_WIDTH_DP);
         this.marqueeDelayMs = clamp(marqueeDelayMs, 0, 5000);
         this.compatRetry = compatRetry;
+        this.marqueeBounce = marqueeBounce;
         this.islandCompat = islandCompat;
         this.disableIslandProperty = disableIslandProperty;
         this.disableIslandFeatureCache = disableIslandFeatureCache;
@@ -44,7 +46,8 @@ final class HookSettings {
     static HookSettings defaults() {
         return new HookSettings(FocusRestoreSettings.DEFAULT_LIMIT_WIDTH,
                 FocusRestoreSettings.DEFAULT_WIDTH_DP, FocusRestoreSettings.DEFAULT_MARQUEE_DELAY_MS,
-                FocusRestoreSettings.DEFAULT_COMPAT_RETRY, FocusRestoreSettings.DEFAULT_ISLAND_COMPAT,
+                FocusRestoreSettings.DEFAULT_COMPAT_RETRY, FocusRestoreSettings.DEFAULT_MARQUEE_BOUNCE,
+                 FocusRestoreSettings.DEFAULT_ISLAND_COMPAT,
                 FocusRestoreSettings.DEFAULT_DISABLE_ISLAND_PROPERTY,
                 FocusRestoreSettings.DEFAULT_DISABLE_ISLAND_FEATURE_CACHE,
                 FocusRestoreSettings.DEFAULT_ALLOW_FOCUS_CLICK,
@@ -65,6 +68,8 @@ final class HookSettings {
         int widthDp = cursor.getInt(1);
         int marqueeDelayMs = cursor.getInt(2);
         boolean compatRetry = columnCount > 3 && !cursor.isNull(3) && cursor.getInt(3) != 0;
+        boolean marqueeBounce = columnCount > 12 && !cursor.isNull(12)
+                 ? cursor.getInt(12) != 0 : FocusRestoreSettings.DEFAULT_MARQUEE_BOUNCE;
         boolean islandCompat = columnCount > 4 && !cursor.isNull(4) && cursor.getInt(4) != 0;
         boolean disableIslandProperty = columnCount > 10 && !cursor.isNull(10)
                 ? cursor.getInt(10) != 0 : FocusRestoreSettings.DEFAULT_DISABLE_ISLAND_PROPERTY;
@@ -80,7 +85,7 @@ final class HookSettings {
         Set<String> forcePackages = columnCount > 9 && !cursor.isNull(9)
                 ? splitPackages(cursor.getString(9)) : Collections.<String>emptySet();
 
-        return new HookSettings(limitWidth, widthDp, marqueeDelayMs, compatRetry,
+        return new HookSettings(limitWidth, widthDp, marqueeDelayMs, compatRetry, marqueeBounce,
                 islandCompat, disableIslandProperty, disableIslandFeatureCache,
                 allowFocusClick, generalSeparator, sideSeparator, forcePackages);
     }
@@ -88,6 +93,7 @@ final class HookSettings {
     String describe() {
         return "limit=" + limitWidth + " widthDp=" + widthDp
                 + " delayMs=" + marqueeDelayMs + " compatRetry=" + compatRetry
+                 + " marqueeBounce=" + marqueeBounce
                 + " islandCompat=" + islandCompat
                  + " disableIslandProperty=" + disableIslandProperty
                  + " disableIslandFeatureCache=" + disableIslandFeatureCache
