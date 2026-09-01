@@ -1,7 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
     <uses-permission android:name="com.android.permission.GET_INSTALLED_APPS" />
-    <application android:theme="@android:style/Theme.Material.Light.NoActionBar" android:label="HyperOS3FocusRestore" android:icon="@drawable/ic_hyperos3_focusrestore" android:allowBackup="false">
+    <application android:theme="@android:style/Theme.Material.Light.NoActionBar" android:label="HyperOS3FocusRestore" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:allowBackup="false">
         <activity
             android:name=".SettingsActivity"
             android:exported="true"
