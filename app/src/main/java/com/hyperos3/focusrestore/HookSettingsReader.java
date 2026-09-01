@@ -11,15 +11,22 @@ final class HookSettingsReader {
 
     static HookSettings read(Context context) {
         if (context == null) return null;
-        ContentResolver resolver = context.getContentResolver();
-        Cursor cursor = resolver.query(SettingsProvider.URI, SettingsProvider.COLUMNS,
-                null, null, null);
-        if (cursor == null) return null;
+        Cursor cursor = null;
         try {
-            if (!cursor.moveToFirst()) return null;
+            ContentResolver resolver = context.getContentResolver();
+            cursor = resolver.query(SettingsProvider.URI, SettingsProvider.COLUMNS,
+                    null, null, null);
+            if (cursor == null || !cursor.moveToFirst()) return null;
             return HookSettings.fromCursor(cursor);
+        } catch (RuntimeException ignored) {
+            return null;
         } finally {
-            cursor.close();
+            if (cursor != null) {
+                try {
+                    cursor.close();
+                } catch (RuntimeException ignored) {
+                }
+            }
         }
     }
 }

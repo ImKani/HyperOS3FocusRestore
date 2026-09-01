@@ -1,5 +1,6 @@
 # Gradle and Android Studio
 .gradle/
+.gradle-temp/
 .android/
 .idea/
 *.iml

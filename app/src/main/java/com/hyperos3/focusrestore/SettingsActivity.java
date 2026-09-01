@@ -38,6 +38,7 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 public final class SettingsActivity extends Activity {
@@ -104,6 +105,7 @@ public final class SettingsActivity extends Activity {
     private TextView dialogEmptyView;
     private boolean dialogAppsLoaded;
     private static final String APP_CACHE_SEPARATOR = "\u001e";
+    private final Map<String, String> appLabels = new java.util.HashMap<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -390,6 +392,7 @@ public final class SettingsActivity extends Activity {
         dialogAppsLoaded = !dialogAllApps.isEmpty();
 
         final Dialog dialog = new Dialog(this);
+        dialog.setOnDismissListener(d -> clearDialogState());
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
         dialog.setContentView(createWhitelistDialogView(dialog));
         Window window = dialog.getWindow();
@@ -473,17 +476,36 @@ public final class SettingsActivity extends Activity {
         return root;
     }
 
+    private void clearDialogState() {
+        dialogAllApps = new ArrayList<>();
+        dialogVisibleApps = new ArrayList<>();
+        dialogSelectedPackages = null;
+        dialogListView = null;
+        dialogAdapter = null;
+        dialogSearchInput = null;
+        dialogShowSystemSwitch = null;
+        dialogEmptyView = null;
+        dialogAppsLoaded = false;
+    }
+
     private void loadDialogApps() {
         List<ApplicationInfo> refreshed = new ArrayList<>(getPackageManager().getInstalledApplications(0));
         getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
                 .putString(FocusRestoreSettings.KEY_ISLAND_APP_CACHE, encodeAppCache(refreshed))
                 .apply();
         dialogAllApps = refreshed;
+        appLabels.clear();
+        for (ApplicationInfo app : refreshed) {
+            if (app != null && app.packageName != null) {
+                appLabels.put(app.packageName, String.valueOf(app.loadLabel(getPackageManager())));
+            }
+        }
         dialogAppsLoaded = true;
         filterDialogApps();
     }
 
     private List<ApplicationInfo> readCachedApps() {
+        appLabels.clear();
         String encoded = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
                 .getString(FocusRestoreSettings.KEY_ISLAND_APP_CACHE, "");
         List<ApplicationInfo> result = new ArrayList<>();
@@ -496,6 +518,7 @@ public final class SettingsActivity extends Activity {
                 app.packageName = fields[0];
                 app.name = fields[1];
                 app.flags = Integer.parseInt(fields[2]);
+                appLabels.put(app.packageName, fields[1]);
                 result.add(app);
             } catch (Throwable ignored) {
             }
@@ -508,7 +531,7 @@ public final class SettingsActivity extends Activity {
         for (ApplicationInfo app : apps) {
             if (app == null || app.packageName == null) continue;
             String label = String.valueOf(app.loadLabel(getPackageManager()))
-                    .replace(APP_CACHE_SEPARATOR, " ").replace("\\n", " ");
+                    .replace(APP_CACHE_SEPARATOR, " ").replace('\n', ' ').replace('\r', ' ');
             if (result.length() > 0) result.append('\n');
             result.append(app.packageName).append(APP_CACHE_SEPARATOR)
                     .append(label).append(APP_CACHE_SEPARATOR).append(app.flags);
@@ -518,21 +541,29 @@ public final class SettingsActivity extends Activity {
 
     private void filterDialogApps() {
         if (!dialogAppsLoaded || dialogAdapter == null) return;
-        String query = dialogSearchInput == null ? "" : dialogSearchInput.getText().toString().toLowerCase(Locale.getDefault()).trim();
+        String query = dialogSearchInput == null ? "" : dialogSearchInput.getText().toString().toLowerCase(Locale.ROOT).trim();
         boolean includeSystem = dialogShowSystemSwitch != null && dialogShowSystemSwitch.isChecked();
         dialogVisibleApps = new ArrayList<>();
         for (ApplicationInfo app : dialogAllApps) {
             boolean system = (app.flags & (ApplicationInfo.FLAG_SYSTEM | ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) != 0;
             if (!includeSystem && system && !dialogSelectedPackages.contains(app.packageName)) continue;
-            String label = String.valueOf(app.loadLabel(getPackageManager()));
-            if (query.length() > 0 && !label.toLowerCase(Locale.getDefault()).contains(query)
-                    && !app.packageName.toLowerCase(Locale.getDefault()).contains(query)) continue;
+            String label = appLabels.get(app.packageName);
+            if (label == null) {
+                label = String.valueOf(app.loadLabel(getPackageManager()));
+                appLabels.put(app.packageName, label);
+            }
+            if (query.length() > 0 && !label.toLowerCase(Locale.ROOT).contains(query)
+                    && !app.packageName.toLowerCase(Locale.ROOT).contains(query)) continue;
             dialogVisibleApps.add(app);
         }
         Collections.sort(dialogVisibleApps, (a, b) -> {
             boolean as = dialogSelectedPackages.contains(a.packageName), bs = dialogSelectedPackages.contains(b.packageName);
             if (as != bs) return as ? -1 : 1;
-            return String.valueOf(a.loadLabel(getPackageManager())).compareToIgnoreCase(String.valueOf(b.loadLabel(getPackageManager())));
+            String aLabel = appLabels.get(a.packageName);
+            String bLabel = appLabels.get(b.packageName);
+            if (aLabel == null) aLabel = String.valueOf(a.loadLabel(getPackageManager()));
+            if (bLabel == null) bLabel = String.valueOf(b.loadLabel(getPackageManager()));
+            return aLabel.compareToIgnoreCase(bLabel);
         });
         dialogAdapter.notifyDataSetChanged();
         boolean empty = dialogVisibleApps.isEmpty();
@@ -573,7 +604,12 @@ public final class SettingsActivity extends Activity {
                 row.addView(textBox, new LinearLayout.LayoutParams(0, -2, 1f));
             }
             ApplicationInfo app = getItem(position);
-            name.setText(String.valueOf(app.loadLabel(getPackageManager())));
+            String label = appLabels.get(app.packageName);
+            if (label == null) {
+                label = String.valueOf(app.loadLabel(getPackageManager()));
+                appLabels.put(app.packageName, label);
+            }
+            name.setText(label);
             packageName.setText(app.packageName);
             boolean selected = dialogSelectedPackages.contains(app.packageName);
             row.setBackground(roundedBg(selected ? Color.rgb(210, 229, 255) : Color.WHITE, 10));

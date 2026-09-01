@@ -3,6 +3,7 @@ package com.hyperos3.focusrestore;
 import android.app.Application;
 import android.app.Notification;
 import android.content.Context;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Parcelable;
 import android.os.SystemClock;
@@ -23,6 +24,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
@@ -43,6 +46,17 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
     private static final long CONVERTED_KEY_TTL_MS = 10L * 60L * 1000L;
     private static final int MAX_CONVERTED_KEYS = 128;
 
+    private static final Set<ClassLoader> INSTALLED_CLASS_LOADERS =
+            Collections.newSetFromMap(new WeakHashMap<ClassLoader, Boolean>());
+    private static final Object INSTALL_LOCK = new Object();
+    private static final Object SETTINGS_READ_LOCK = new Object();
+    private static final ExecutorService SETTINGS_EXECUTOR =
+            Executors.newSingleThreadExecutor(command -> {
+                Thread thread = new Thread(command, TAG + "-settings");
+                thread.setDaemon(true);
+                return thread;
+            });
+
     private ClassLoader classLoader;
     private volatile Context systemUiContext;
     // FocusedTextView.startMarqueeLocal() copies this value into TextView.
@@ -50,12 +64,21 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
     private static final int MARQUEE_REPEAT_LIMIT = -1;
     private volatile HookSettings currentSettings = HookSettings.defaults();
     private long lastProviderReadAttemptMs = Long.MIN_VALUE;
+    private long settingsReadGeneration;
+    private boolean settingsReadQueued;
     private boolean hasSuccessfulProviderSettings;
     private int providerSettingsState = Integer.MIN_VALUE;
     private TextView pendingMarqueeText;
     private Runnable pendingMarqueeRunnable;
-    private final Set<Object> convertedBeans = Collections.newSetFromMap(new WeakHashMap<>());
-    private final Set<Object> preMarkedIslands = Collections.newSetFromMap(new WeakHashMap<>());
+    private long marqueeGeneration;
+    private final Set<Object> convertedBeans = Collections.synchronizedSet(
+            Collections.newSetFromMap(new WeakHashMap<>()));
+    private final Map<Object, Boolean> preMarkedOriginalFocus = Collections.synchronizedMap(
+            new WeakHashMap<>());
+    private final Set<Object> preMarkedIslands = Collections.synchronizedSet(
+            Collections.newSetFromMap(new WeakHashMap<>()));
+    private final Map<Object, OriginalBeanState> originalBeanStates =
+            Collections.synchronizedMap(new WeakHashMap<>());
     private final LinkedHashMap<String, Long> convertedNotificationKeys =
             new LinkedHashMap<>(16, 0.75f, true);
 
@@ -66,6 +89,11 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
             return;
         }
 
+        synchronized (INSTALL_LOCK) {
+            if (!INSTALLED_CLASS_LOADERS.add(lpparam.classLoader)) {
+                return;
+            }
+        }
         classLoader = lpparam.classLoader;
         hookApplicationAttach();
         reloadSettings(true);
@@ -171,6 +199,9 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
                                     ? extractIslandContent(data) : null;
                             if (islandText != null && !TextUtils.isEmpty(islandText.text)) {
                                 try {
+                                    boolean originalFocus = getBooleanField(param.args[0],
+                                            "mIsFocusNotification", false);
+                                    preMarkedOriginalFocus.put(param.args[0], originalFocus);
                                     XposedHelpers.setBooleanField(param.args[0], "mIsFocusNotification", true);
                                     preMarkedIslands.add(param.args[0]);
                                     log("marked island notification for focus conversion source="
@@ -200,6 +231,7 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
                                         + " content=" + islandText.text);
                                 return;
                             }
+                            clearPreMark(param.args[0], true);
                             boolean fallback = data.isFocus && data.hasMainRv;
                             if (!original && fallback) {
                                 param.setResult(true);
@@ -253,10 +285,29 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
             return;
         }
         lastProviderReadAttemptMs = now;
-        readProviderSettings();
+        if (!force && settingsReadQueued) return;
+        final long generation = ++settingsReadGeneration;
+        if (force) {
+            synchronized (SETTINGS_READ_LOCK) {
+                readProviderSettings(generation);
+            }
+            return;
+        }
+        settingsReadQueued = true;
+        SETTINGS_EXECUTOR.execute(() -> {
+            try {
+                synchronized (SETTINGS_READ_LOCK) {
+                    readProviderSettings(generation);
+                }
+            } finally {
+                synchronized (HyperOS3FocusRestoreHook.this) {
+                    settingsReadQueued = false;
+                }
+            }
+        });
     }
 
-    private void readProviderSettings() {
+    private void readProviderSettings(long generation) {
         try {
             Context context = systemUiContext;
             if (context == null) {
@@ -276,7 +327,10 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
                 logProviderSettingsState(false, "provider query returned no settings");
                 return;
             }
-            currentSettings = next;
+            synchronized (this) {
+                if (generation != settingsReadGeneration) return;
+                currentSettings = next;
+            }
             hasSuccessfulProviderSettings = true;
             logProviderSettingsState(true, null);
         } catch (Throwable t) {
@@ -306,14 +360,16 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
             TextView textView = (TextView) value;
             if (!currentSettings.limitWidth) return;
             float density = textView.getResources().getDisplayMetrics().density;
-            int widthPx = Math.round(currentSettings.widthDp * density);
-            textView.setMaxWidth(widthPx);
+            int widthPx = Math.max(1, Math.round(currentSettings.widthDp * density));
             ViewGroup.LayoutParams params = textView.getLayoutParams();
-            if (params != null) {
+            boolean changed = textView.getMaxWidth() != widthPx;
+            if (changed) textView.setMaxWidth(widthPx);
+            if (params != null && params.width != widthPx) {
                 params.width = widthPx;
                 textView.setLayoutParams(params);
+                changed = true;
             }
-            textView.requestLayout();
+            if (changed) textView.requestLayout();
             log("applied 0.7 manual focus text width=" + currentSettings.widthDp + "dp px=" + widthPx);
         } catch (Throwable t) {
             error("applyTextWidth", t);
@@ -390,7 +446,7 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
         }
     }
 
-    private void scheduleNativeMarquee(Object promptView) {
+    private synchronized void scheduleNativeMarquee(Object promptView) {
         try {
             Object value = XposedHelpers.getObjectField(promptView, "mContentText");
             if (!(value instanceof TextView)) return;
@@ -398,11 +454,16 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
             if (pendingMarqueeText != null && pendingMarqueeRunnable != null) {
                 pendingMarqueeText.removeCallbacks(pendingMarqueeRunnable);
             }
+            final long generation = ++marqueeGeneration;
             pendingMarqueeText = textView;
             pendingMarqueeRunnable = new Runnable() {
                 private int attempts;
 
                 @Override public void run() {
+                    synchronized (HyperOS3FocusRestoreHook.this) {
+                        if (generation != marqueeGeneration || pendingMarqueeText != textView) return;
+                    }
+                    if (Build.VERSION.SDK_INT >= 19 && !textView.isAttachedToWindow()) return;
                     attempts++;
                     startNativeMarquee(textView, attempts);
                     // Compatibility mode adds one retry for ROMs that reset
@@ -595,7 +656,8 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
 
     private boolean isSmsVerificationCode(FocusData data) {
         if (data == null || !"com.android.mms".equals(data.packageName)
-                || TextUtils.isEmpty(data.islandParam)) return false;
+                || TextUtils.isEmpty(data.islandParam)
+                || data.islandParam.length() > 256 * 1024) return false;
         try {
             JSONObject root = new JSONObject(data.islandParam);
             return root.optInt("protocol", -1) == 1
@@ -618,16 +680,40 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
             return;
         }
 
-
+        OriginalBeanState savedState;
+        synchronized (originalBeanStates) {
+            savedState = originalBeanStates.get(bean);
+        }
+        if (savedState != null) {
+            data.isFocus = savedState.originalFocus || data.hasExplicitFocusData;
+            data.isOriginalFocus = savedState.originalFocus || data.hasExplicitFocusData;
+        }
         IslandText islandText = shouldConvert(data) ? extractIslandContent(data) : null;
         if (islandText != null && !TextUtils.isEmpty(islandText.text)) {
             try {
-                // When island conversion is enabled, the ordinary notification title
-                // (for example "Template 1: Weather") is only a fallback. Replace it
-                // with the selected template's actual body so the focus view receives
-                // Heavy Snow, Verification Code, progress text, and similar content.
+                // Keep the OEM value so a reused Bean can be restored when the
+                // payload, settings, or notification identity changes.
                 String current = stringValue(getField(bean, "content"));
+                OriginalBeanState state;
+                synchronized (originalBeanStates) {
+                    state = originalBeanStates.get(bean);
+                    if (state == null) {
+                        Object expanded = getField(bean, "sbn");
+                        Boolean preMarkedFocus = preMarkedOriginalFocus.remove(expanded);
+                        boolean originalFocus = preMarkedFocus != null
+                                ? preMarkedFocus : getBooleanField(expanded,
+                                "mIsFocusNotification", data.isFocus);
+                        state = new OriginalBeanState(expanded, originalFocus, current);
+                        originalBeanStates.put(bean, state);
+                    } else if (!TextUtils.equals(current, state.lastConvertedContent)) {
+                        state.originalContent = current;
+                    }
+                    state.lastConvertedContent = islandText.text;
+                }
                 XposedHelpers.setObjectField(bean, "content", islandText.text);
+                Object expanded = state.expanded;
+                preMarkedIslands.remove(expanded);
+                preMarkedOriginalFocus.remove(expanded);
                 data.content = islandText.text;
                 data.isFocus = true;
                 convertedBeans.add(bean);
@@ -637,6 +723,11 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
             } catch (Throwable t) {
                 error(stage + " applyIslandContent", t);
             }
+        } else {
+            restoreOriginalBean(bean, data, stage);
+            Object expanded = getField(bean, "sbn");
+            preMarkedIslands.remove(expanded);
+            preMarkedOriginalFocus.remove(expanded);
         }
 
         if (FALLBACK_MAIN_RV_FOR_STATUS_BAR && data.isFocus) {
@@ -660,6 +751,29 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
         }
 
         log(stage + " " + data.summary());
+    }
+
+    private void restoreOriginalBean(Object bean, FocusData data, String stage) {
+        OriginalBeanState state;
+        synchronized (originalBeanStates) {
+            state = originalBeanStates.remove(bean);
+        }
+        if (state == null) return;
+        clearPreMark(state.expanded, false);
+        try {
+            XposedHelpers.setObjectField(bean, "content", state.originalContent);
+            if (state.expanded != null) {
+                XposedHelpers.setBooleanField(state.expanded, "mIsFocusNotification", state.originalFocus);
+            }
+            if (data != null) {
+                data.content = state.originalContent;
+                data.isFocus = state.originalFocus;
+            }
+            convertedBeans.remove(bean);
+            log(stage + " restored original focus content");
+        } catch (Throwable t) {
+            error(stage + " restoreOriginalContent", t);
+        }
     }
 
     private IslandText extractIslandContent(FocusData data) {
@@ -1039,6 +1153,19 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
         }
     }
 
+    private void clearPreMark(Object expanded, boolean restoreOriginal) {
+        if (expanded == null) return;
+        Boolean original = preMarkedOriginalFocus.remove(expanded);
+        preMarkedIslands.remove(expanded);
+        if (restoreOriginal && original != null) {
+            try {
+                XposedHelpers.setBooleanField(expanded, "mIsFocusNotification", original);
+            } catch (Throwable t) {
+                error("restorePreMarkedFocus", t);
+            }
+        }
+    }
+
     private static boolean getBooleanField(Object target, String name, boolean fallback) {
         if (target == null) return fallback;
         try {
@@ -1066,6 +1193,19 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
     private static void error(String stage, Throwable t) {
         Log.e(TAG, stage, t);
         XposedBridge.log(TAG + " ERROR " + stage + ": " + Log.getStackTraceString(t));
+    }
+
+    private static final class OriginalBeanState {
+        final Object expanded;
+        final boolean originalFocus;
+        String originalContent;
+        String lastConvertedContent;
+
+        OriginalBeanState(Object expanded, boolean originalFocus, String originalContent) {
+            this.expanded = expanded;
+            this.originalFocus = originalFocus;
+            this.originalContent = originalContent;
+        }
     }
 
     private static final class IslandText {

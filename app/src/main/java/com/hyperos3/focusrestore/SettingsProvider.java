@@ -50,7 +50,9 @@ public final class SettingsProvider extends ContentProvider {
         return result.toString();
     }
 
-    @Override public String getType(Uri uri) { return "vnd.android.cursor.item/vnd.hyperos3.settings"; }
+    @Override public String getType(Uri uri) {
+        return URI.equals(uri) ? "vnd.android.cursor.item/vnd.hyperos3.settings" : null;
+    }
     @Override public Uri insert(Uri uri, ContentValues values) { throw new UnsupportedOperationException(); }
     @Override public int delete(Uri uri, String selection, String[] selectionArgs) { throw new UnsupportedOperationException(); }
     @Override public int update(Uri uri, ContentValues values, String selection, String[] selectionArgs) { throw new UnsupportedOperationException(); }
