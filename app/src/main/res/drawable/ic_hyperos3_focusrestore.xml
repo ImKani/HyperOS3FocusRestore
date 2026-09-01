@@ -5,10 +5,10 @@
     android:viewportHeight="1024">
     <path
         android:fillColor="@android:color/transparent"
-        android:strokeColor="#FF263238"
-        android:strokeWidth="46"
-        android:pathData="M512,304A208,208 0,1 1,512 720A208,208 0,1 1,512 304" />
+        android:strokeColor="@color/ic_launcher_foreground_color"
+        android:strokeWidth="58"
+        android:pathData="M512,352A160,160 0,1 1,512 672A160,160 0,1 1,512 352" />
     <path
-        android:fillColor="#FF263238"
+        android:fillColor="@color/ic_launcher_foreground_color"
         android:pathData="M512,436A76,76 0,1 1,512 588A76,76 0,1 1,512 436" />
 </vector>
