@@ -14,11 +14,12 @@
         <provider
             android:name=".SettingsProvider"
             android:authorities="com.hyperos3.focusrestore.settings"
+            android:directBootAware="true"
             android:exported="true"
             android:grantUriPermissions="false" />
         <meta-data android:name="xposedmodule" android:value="true" />
         <meta-data android:name="xposedscope" android:resource="@array/xposed_scope" />
-        <meta-data android:name="xposeddescription" android:value="恢复 HyperOS 3 的焦点通知状态栏显示" />
+        <meta-data android:name="xposeddescription" android:value="恢复 HyperOS 3/4 的焦点通知状态栏显示" />
         <meta-data android:name="xposedminversion" android:value="93" />
         <meta-data android:name="xposedsharedprefs" android:value="true" />
     </application>

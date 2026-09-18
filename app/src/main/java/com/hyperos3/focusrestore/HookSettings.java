@@ -8,6 +8,7 @@ import java.util.Set;
 
 /** Immutable SystemUI-side settings snapshot. */
 final class HookSettings {
+    final int hookMode;
     final boolean limitWidth;
     final int widthDp;
     final int marqueeDelayMs;
@@ -21,11 +22,12 @@ final class HookSettings {
     final String sideSeparator;
     final Set<String> islandForcePackages;
 
-    private HookSettings(boolean limitWidth, int widthDp, int marqueeDelayMs,
+    private HookSettings(int hookMode, boolean limitWidth, int widthDp, int marqueeDelayMs,
                          boolean compatRetry, boolean marqueeBounce, boolean islandCompat,
                          boolean disableIslandProperty, boolean disableIslandFeatureCache,
                          boolean allowFocusClick, String generalSeparator, String sideSeparator,
                          Set<String> forcePackages) {
+        this.hookMode = FocusRestoreSettings.normalizeHookMode(hookMode);
         this.limitWidth = limitWidth;
         this.widthDp = clamp(widthDp, FocusRestoreSettings.MIN_WIDTH_DP,
                 FocusRestoreSettings.MAX_WIDTH_DP);
@@ -44,7 +46,8 @@ final class HookSettings {
     }
 
     static HookSettings defaults() {
-        return new HookSettings(FocusRestoreSettings.DEFAULT_LIMIT_WIDTH,
+        return new HookSettings(FocusRestoreSettings.DEFAULT_HOOK_MODE,
+                FocusRestoreSettings.DEFAULT_LIMIT_WIDTH,
                 FocusRestoreSettings.DEFAULT_WIDTH_DP, FocusRestoreSettings.DEFAULT_MARQUEE_DELAY_MS,
                 FocusRestoreSettings.DEFAULT_COMPAT_RETRY, FocusRestoreSettings.DEFAULT_MARQUEE_BOUNCE,
                  FocusRestoreSettings.DEFAULT_ISLAND_COMPAT,
@@ -84,21 +87,24 @@ final class HookSettings {
                 ? cursor.getString(8) : legacySeparator;
         Set<String> forcePackages = columnCount > 9 && !cursor.isNull(9)
                 ? splitPackages(cursor.getString(9)) : Collections.<String>emptySet();
+        int hookMode = columnCount > 13 && !cursor.isNull(13)
+                ? cursor.getInt(13) : FocusRestoreSettings.DEFAULT_HOOK_MODE;
 
-        return new HookSettings(limitWidth, widthDp, marqueeDelayMs, compatRetry, marqueeBounce,
+        return new HookSettings(hookMode, limitWidth, widthDp, marqueeDelayMs,
+                compatRetry, marqueeBounce,
                 islandCompat, disableIslandProperty, disableIslandFeatureCache,
                 allowFocusClick, generalSeparator, sideSeparator, forcePackages);
     }
 
     String describe() {
-        return "limit=" + limitWidth + " widthDp=" + widthDp
+        return "hookMode=OS" + hookMode + " limit=" + limitWidth + " widthDp=" + widthDp
                 + " delayMs=" + marqueeDelayMs + " compatRetry=" + compatRetry
                  + " marqueeBounce=" + marqueeBounce
                 + " islandCompat=" + islandCompat
                  + " disableIslandProperty=" + disableIslandProperty
                  + " disableIslandFeatureCache=" + disableIslandFeatureCache
                  + " allowFocusClick=" + allowFocusClick
-                + " forcePackages=" + islandForcePackages.size()
+                + " forcePackages=" + islandForcePackages
                 + " islandSeparator=" + displaySeparator(generalSeparator)
                 + " islandSideSeparator=" + displaySeparator(sideSeparator);
     }

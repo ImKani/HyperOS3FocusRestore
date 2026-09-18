@@ -42,6 +42,7 @@ import java.util.Map;
 import java.util.Set;
 
 public final class SettingsActivity extends Activity {
+    private static final String TAG = "HyperOS3FocusRestore";
     // Deprecated aliases retained for the existing Hook source/API surface.
     static final String PREFS_NAME = FocusRestoreSettings.PREFS_NAME;
     static final String KEY_LIMIT_WIDTH = FocusRestoreSettings.KEY_LIMIT_WIDTH;
@@ -77,6 +78,8 @@ public final class SettingsActivity extends Activity {
     private static final int COLOR_DIVIDER = Color.rgb(218, 220, 224);
     private static final int COLOR_INPUT_BACKGROUND = Color.rgb(242, 244, 247);
 
+    private Button os3ModeButton;
+    private Button os4ModeButton;
     private Switch manualWidthSwitch;
     private SeekBar widthSeekBar;
     private TextView widthValue;
@@ -92,7 +95,7 @@ public final class SettingsActivity extends Activity {
     private EditText sideSeparatorInput;
     private boolean pendingManual, pendingCompatRetry, pendingMarqueeBounce, pendingIslandCompat,
             pendingDisableIslandProperty, pendingDisableIslandFeatureCache, pendingAllowFocusClick;
-    private int pendingWidthDp, pendingDelayMs;
+    private int pendingHookMode, pendingWidthDp, pendingDelayMs;
     private String pendingGeneralSeparator, pendingSideSeparator;
     private Set<String> pendingForcePackages = new HashSet<>();
     private Button forcePackagesButton;
@@ -113,6 +116,13 @@ public final class SettingsActivity extends Activity {
         super.onCreate(savedInstanceState);
         configureLightSystemBars(getWindow());
         preferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        SharedPreferences hookPreferences = FocusRestoreSettings.hookPreferences(this);
+        if (!FocusRestoreSettings.hasHookSettings(hookPreferences)) {
+            FocusRestoreSettings initialSettings = FocusRestoreSettings.fromPreferences(preferences);
+            boolean migrated = initialSettings.save(hookPreferences);
+            android.util.Log.i(TAG, "hook settings migration storage=deviceProtected saved="
+                    + migrated + " " + initialSettings.describe());
+        }
         setContentView(createContent());
         loadSettings();
         showPage(0);
@@ -222,6 +232,23 @@ public final class SettingsActivity extends Activity {
     private void buildSettingsPage(LinearLayout root) {
         TextView intro = text("焦点通知显示与兼容设置", 14, COLOR_TEXT_SECONDARY);
         root.addView(intro, matchWrap(dp(10)));
+
+        LinearLayout modePanel = panel();
+        modePanel.addView(text("系统界面版本", 15, COLOR_TEXT_PRIMARY), matchWrap(dp(8)));
+        LinearLayout modeSelector = new LinearLayout(this);
+        modeSelector.setOrientation(LinearLayout.HORIZONTAL);
+        os3ModeButton = createModeButton("HyperOS 3", FocusRestoreSettings.HOOK_MODE_OS3);
+        os4ModeButton = createModeButton("HyperOS 4", FocusRestoreSettings.HOOK_MODE_OS4);
+        modeSelector.addView(os3ModeButton, new LinearLayout.LayoutParams(0, dp(44), 1f));
+        LinearLayout.LayoutParams os4Params = new LinearLayout.LayoutParams(0, dp(44), 1f);
+        os4Params.leftMargin = dp(8);
+        modeSelector.addView(os4ModeButton, os4Params);
+        modePanel.addView(modeSelector, matchWrap(dp(8)));
+        modePanel.addView(text("仅安装所选版本的 Hook；默认 HyperOS 3。切换后必须重启 SystemUI 或设备，不会自动检测或回退。",
+                13, COLOR_TEXT_SECONDARY), matchWrap(0));
+        root.addView(modePanel, matchWrap(dp(12)));
+        updateModeButtons();
+
         LinearLayout widthPanel = panel();
         manualWidthSwitch = new Switch(this);
         manualWidthSwitch.setText("限制焦点通知宽度");
@@ -345,7 +372,7 @@ public final class SettingsActivity extends Activity {
     }
 
     private void buildAboutPage(LinearLayout root) {
-        TextView about = text("焦点通知\n\n用于 HyperOS 3 的实验性 LSPosed 模块，尝试恢复 HyperOS 2 的 Focus（焦点通知）状态栏显示路径。\n\n本模块由 AI 辅助反编译分析与编写，代码通过 LSPosed Hook 介入系统界面，存在 ROM 版本差异、系统崩溃、状态栏显示异常、功能失效、数据丢失或其他不可控风险。使用前请自行备份，并自行承担使用风险。模块不保证适用于所有设备、系统版本或第三方通知。\n\n\n作者：ImKani\n酷安主页：https://www.coolapk.com/u/1205658\nGitHub：https://github.com/ImKani/HyperOS3FocusRestore\n\n许可证：GNU General Public License v3.0 only（GPL-3.0-only）", 15, COLOR_TEXT_PRIMARY);
+        TextView about = text("焦点通知\n\n用于 HyperOS 3/4 的实验性 LSPosed 模块，尝试恢复 HyperOS 2 的 Focus（焦点通知）状态栏显示路径。\n\n本模块由 AI 辅助反编译分析与编写，代码通过 LSPosed Hook 介入系统界面，存在 ROM 版本差异、系统崩溃、状态栏显示异常、功能失效、数据丢失或其他不可控风险。使用前请自行备份，并自行承担使用风险。模块不保证适用于所有设备、系统版本或第三方通知。\n\n\n作者：ImKani\n酷安主页：https://www.coolapk.com/u/1205658\nGitHub：https://github.com/ImKani/HyperOS3FocusRestore\n\n许可证：GNU General Public License v3.0 only（GPL-3.0-only）", 15, COLOR_TEXT_PRIMARY);
         root.addView(about, matchWrap(dp(18)));
         Button github = new Button(this);
         github.setText("打开 GitHub");
@@ -649,6 +676,7 @@ public final class SettingsActivity extends Activity {
 
     private void loadSettings() {
         settings = FocusRestoreSettings.fromPreferences(preferences);
+        pendingHookMode = settings.hookMode;
         pendingManual = settings.limitWidth;
         pendingWidthDp = settings.widthDp;
         pendingDelayMs = settings.marqueeDelayMs;
@@ -671,12 +699,20 @@ public final class SettingsActivity extends Activity {
     private void saveSettings() {
         if (generalSeparatorInput != null) pendingGeneralSeparator = generalSeparatorInput.getText().toString();
         if (sideSeparatorInput != null) pendingSideSeparator = sideSeparatorInput.getText().toString();
-        settings = FocusRestoreSettings.withValues(pendingManual, pendingWidthDp, pendingDelayMs,
+        settings = FocusRestoreSettings.withValues(pendingHookMode, pendingManual,
+                pendingWidthDp, pendingDelayMs,
                 pendingCompatRetry, pendingMarqueeBounce, pendingIslandCompat, pendingDisableIslandProperty,
                 pendingDisableIslandFeatureCache, pendingAllowFocusClick, pendingGeneralSeparator,
                 pendingSideSeparator, pendingForcePackages);
-        settings.save(preferences);
-        if (statusHint != null) statusHint.setText("设置已保存。请重启 SystemUI 或设备后生效。");
+        boolean credentialSaved = settings.save(preferences);
+        boolean hookSaved = settings.save(FocusRestoreSettings.hookPreferences(this));
+        android.util.Log.i(TAG, "settings saved credential=" + credentialSaved
+                + " deviceProtected=" + hookSaved + " " + settings.describe());
+        if (statusHint != null) {
+            statusHint.setText(credentialSaved && hookSaved
+                    ? "设置已保存。请重启 SystemUI 或设备后生效。"
+                    : "设置保存失败，请重试并检查存储状态。");
+        }
     }
 
     private void markPending() { if (statusHint != null) statusHint.setText("有未保存的修改，请点击顶部“保存”。"); }
@@ -687,6 +723,33 @@ public final class SettingsActivity extends Activity {
         drawable.setColor(color);
         drawable.setCornerRadius(dp((int) radiusDp));
         return drawable;
+    }
+
+    private Button createModeButton(String label, int mode) {
+        Button button = new Button(this);
+        button.setText(label);
+        button.setTextSize(14);
+        button.setAllCaps(false);
+        button.setMinHeight(0);
+        button.setPadding(dp(8), 0, dp(8), 0);
+        button.setOnClickListener(v -> {
+            if (pendingHookMode == mode) return;
+            pendingHookMode = mode;
+            updateModeButtons();
+            markPending();
+        });
+        return button;
+    }
+
+    private void updateModeButtons() {
+        styleModeButton(os3ModeButton, pendingHookMode == FocusRestoreSettings.HOOK_MODE_OS3);
+        styleModeButton(os4ModeButton, pendingHookMode == FocusRestoreSettings.HOOK_MODE_OS4);
+    }
+
+    private void styleModeButton(Button button, boolean selected) {
+        if (button == null) return;
+        button.setTextColor(selected ? Color.WHITE : COLOR_TEXT_SECONDARY);
+        button.setBackground(roundedBg(selected ? COLOR_PRIMARY : COLOR_INPUT_BACKGROUND, 8));
     }
 
     private void updateNavButtons(int selected) {

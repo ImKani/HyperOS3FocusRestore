@@ -3,6 +3,7 @@ package com.hyperos3.focusrestore;
 import android.animation.ValueAnimator;
 import android.app.Application;
 import android.app.Notification;
+import android.app.PendingIntent;
 import android.content.Context;
 import android.os.Build;
 import android.os.Bundle;
@@ -72,6 +73,9 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
     private boolean settingsReadQueued;
     private boolean hasSuccessfulProviderSettings;
     private int providerSettingsState = Integer.MIN_VALUE;
+    private boolean modeHooksInstalled;
+    private int installedHookMode;
+    private HyperOS4FocusController os4Controller;
     private TextView pendingMarqueeText;
     private Runnable pendingMarqueeRunnable;
     private ValueAnimator fallbackMarqueeAnimator;
@@ -101,13 +105,57 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
         }
         classLoader = lpparam.classLoader;
         hookApplicationAttach();
-        reloadSettings(true);
-        log("loading in " + lpparam.packageName + "/" + lpparam.processName
-                + " settings=" + currentSettings.describe());
-        logCapabilities();
-
         hookDynamicIslandSystemProperty();
         disableDynamicIslandFeatureCache();
+        log("loading in " + lpparam.packageName + "/" + lpparam.processName
+                + " awaiting persisted hook mode; default=OS"
+                + FocusRestoreSettings.DEFAULT_HOOK_MODE);
+    }
+
+    private void logCapabilities(int hookMode) {
+        Class<?> focusUtils = FocusReflection.findClass(classLoader,
+                "com.android.systemui.statusbar.notification.utils.FocusUtils");
+        if (hookMode == FocusRestoreSettings.HOOK_MODE_OS4) {
+            Class<?> pipeline = FocusReflection.findClass(classLoader,
+                    "com.android.systemui.statusbar.notification.collection.NotifPipeline");
+            Class<?> statusBar = FocusReflection.findClass(classLoader,
+                    "com.android.systemui.statusbar.phone.MiuiPhoneStatusBarView");
+            log("capabilities configuredMode=OS4 installedMode=OS4 "
+                    + FocusReflection.capability(focusUtils, "showOnStatusBar")
+                    + " " + FocusReflection.capability(pipeline, "addCollectionListener")
+                    + " " + FocusReflection.capability(statusBar, "onFinishInflate"));
+            return;
+        }
+        Class<?> promptView = FocusReflection.findClass(classLoader,
+                "com.android.systemui.statusbar.phone.FocusedNotifPromptView");
+        Class<?> focusedText = FocusReflection.findClass(classLoader,
+                "com.android.systemui.statusbar.widget.FocusedTextView");
+        log("capabilities configuredMode=OS3 installedMode=OS3 "
+                + FocusReflection.capability(focusUtils, "showOnStatusBar")
+                + " " + FocusReflection.capability(promptView, "setData")
+                + " " + FocusReflection.capability(promptView, "onFocusNotifPromptClicked")
+                + " " + FocusReflection.capability(focusedText, "startMarqueeLocal"));
+    }
+
+    private synchronized void installConfiguredModeHooks() {
+        if (modeHooksInstalled) {
+            log("mode hooks already installed installedMode=OS" + installedHookMode
+                    + " configuredMode=OS" + currentSettings.hookMode);
+            return;
+        }
+        installedHookMode = currentSettings.hookMode;
+        modeHooksInstalled = true;
+        log("installing configuredMode=OS" + installedHookMode
+                + " settings=" + currentSettings.describe());
+        logCapabilities(installedHookMode);
+        if (installedHookMode == FocusRestoreSettings.HOOK_MODE_OS4) {
+            installOS4Hooks();
+        } else {
+            installOS3Hooks();
+        }
+    }
+
+    private void installOS3Hooks() {
         hookShowOnStatusBar();
         hookPromptViewSetData();
         hookFocusedParentParams();
@@ -115,19 +163,39 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
         hookPromptShouldShow();
         hookDisableConvertedFocusClick();
         hookRemoteViewsErrors();
+        log("installedMode=OS3");
     }
 
-    private void logCapabilities() {
-        Class<?> focusUtils = FocusReflection.findClass(classLoader,
-                "com.android.systemui.statusbar.notification.utils.FocusUtils");
-        Class<?> promptView = FocusReflection.findClass(classLoader,
-                "com.android.systemui.statusbar.phone.FocusedNotifPromptView");
-        Class<?> focusedText = FocusReflection.findClass(classLoader,
-                "com.android.systemui.statusbar.widget.FocusedTextView");
-        log("capabilities " + FocusReflection.capability(focusUtils, "showOnStatusBar")
-                + " " + FocusReflection.capability(promptView, "setData")
-                + " " + FocusReflection.capability(promptView, "onFocusNotifPromptClicked")
-                + " " + FocusReflection.capability(focusedText, "startMarqueeLocal"));
+    private void installOS4Hooks() {
+        Context context = systemUiContext;
+        if (context == null) {
+            error("installOS4Hooks", new IllegalStateException("SystemUI context unavailable"));
+            return;
+        }
+        os4Controller = new HyperOS4FocusController(classLoader, context,
+                new HyperOS4FocusController.ItemFactory() {
+                    @Override
+                    public HyperOS4FocusController.DisplayItem create(Object notificationEntry) {
+                        return createOS4DisplayItem(notificationEntry);
+                    }
+
+                    @Override
+                    public HookSettings settings() {
+                        return currentSettings;
+                    }
+                }, new HyperOS4FocusController.Logger() {
+                    @Override
+                    public void log(String message) {
+                        HyperOS3FocusRestoreHook.this.log(message);
+                    }
+
+                    @Override
+                    public void error(String stage, Throwable throwable) {
+                        HyperOS3FocusRestoreHook.this.error(stage, throwable);
+                    }
+                });
+        os4Controller.install();
+        log("installedMode=OS4");
     }
 
     private void hookApplicationAttach() {
@@ -137,9 +205,20 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
                         @Override
                         protected void afterHookedMethod(MethodHookParam param) {
                             if (param.args[0] instanceof Context) {
-                                systemUiContext = ((Context) param.args[0]).getApplicationContext();
-                                log("SystemUI application context available; reloading settings");
-                                reloadSettings(true);
+                                Context attachedContext = (Context) param.args[0];
+                                Context applicationContext = attachedContext.getApplicationContext();
+                                systemUiContext = applicationContext != null
+                                        ? applicationContext : attachedContext;
+                                log("SystemUI attach context available class="
+                                        + systemUiContext.getClass().getName()
+                                        + " applicationContext=" + (applicationContext != null)
+                                        + "; loading persisted hook mode");
+                                if (reloadSettings(true)) {
+                                    installConfiguredModeHooks();
+                                } else {
+                                    log("mode hooks not installed: persisted settings unavailable; "
+                                            + "restart SystemUI or device after settings storage is available");
+                                }
                             }
                         }
                     });
@@ -283,20 +362,19 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
         }
     }
 
-    private synchronized void reloadSettings(boolean force) {
+    private synchronized boolean reloadSettings(boolean force) {
         long now = SystemClock.elapsedRealtime();
         if (!force && lastProviderReadAttemptMs != Long.MIN_VALUE
                 && now - lastProviderReadAttemptMs < SETTINGS_REFRESH_INTERVAL_MS) {
-            return;
+            return hasSuccessfulProviderSettings;
         }
         lastProviderReadAttemptMs = now;
-        if (!force && settingsReadQueued) return;
+        if (!force && settingsReadQueued) return hasSuccessfulProviderSettings;
         final long generation = ++settingsReadGeneration;
         if (force) {
             synchronized (SETTINGS_READ_LOCK) {
-                readProviderSettings(generation);
+                return readProviderSettings(generation);
             }
-            return;
         }
         settingsReadQueued = true;
         SETTINGS_EXECUTOR.execute(() -> {
@@ -310,37 +388,47 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
                 }
             }
         });
+        return hasSuccessfulProviderSettings;
     }
 
-    private void readProviderSettings(long generation) {
+    private boolean readProviderSettings(long generation) {
         try {
             Context context = systemUiContext;
             if (context == null) {
                 Object currentApplication = XposedHelpers.callStaticMethod(
                         Class.forName("android.app.ActivityThread"), "currentApplication");
                 if (currentApplication instanceof Context) {
-                    context = (Context) currentApplication;
-                    systemUiContext = context.getApplicationContext();
+                    Context application = (Context) currentApplication;
+                    Context applicationContext = application.getApplicationContext();
+                    context = applicationContext != null ? applicationContext : application;
+                    systemUiContext = context;
                 }
             }
             if (context == null) {
                 logProviderSettingsState(false, "application context unavailable");
-                return;
+                return false;
             }
             HookSettings next = HookSettingsReader.read(context);
             if (next == null) {
                 logProviderSettingsState(false, "provider query returned no settings");
-                return;
+                return false;
             }
             synchronized (this) {
-                if (generation != settingsReadGeneration) return;
+                if (generation != settingsReadGeneration) return false;
                 currentSettings = next;
+                if (modeHooksInstalled && next.hookMode != installedHookMode) {
+                    log("hook mode change saved configuredMode=OS" + next.hookMode
+                            + " installedMode=OS" + installedHookMode
+                            + "; restart SystemUI or device to apply");
+                }
             }
             hasSuccessfulProviderSettings = true;
             logProviderSettingsState(true, null);
+            return true;
         } catch (Throwable t) {
             logProviderSettingsState(false, t.getClass().getSimpleName());
             error("readProviderSettings", t);
+            return false;
         }
     }
 
@@ -1134,6 +1222,84 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
         return value.length() == 0 ? null : value;
     }
 
+    private HyperOS4FocusController.DisplayItem createOS4DisplayItem(Object entry) {
+        reloadSettings(false);
+        Object expanded = getField(entry, "mSbn");
+        if (expanded == null) expanded = getField(entry, "sbn");
+        if (expanded == null) return null;
+        FocusData data = inspectExpanded(expanded);
+        if (data == null) return null;
+        Object keyValue = getField(entry, "key");
+        if (keyValue == null) keyValue = getField(entry, "mKey");
+        String key = stringValue(keyValue);
+        if (TextUtils.isEmpty(key)) return null;
+
+        Notification notification = null;
+        try {
+            Object value = XposedHelpers.callMethod(expanded, "getNotification");
+            if (value instanceof Notification) notification = (Notification) value;
+        } catch (Throwable t) {
+            error("OS4 getNotification key=" + key, t);
+        }
+        PendingIntent contentIntent = notification == null ? null : notification.contentIntent;
+
+        boolean hasNativeStatusBarContent = OS4FocusPriorityPolicy.hasNativeStatusBarContent(
+                data.barRv != null || data.barNightRv != null,
+                !TextUtils.isEmpty(data.ticker), data.hasIslandParam);
+        log("OS4 classification key=" + key + " package=" + data.packageName
+                + " originalFocusField=" + data.originalFocusField
+                + " explicitFocus=" + data.explicitFocus
+                + " isOriginalFocus=" + data.isOriginalFocus
+                + " hasBarRemoteViews=" + (data.barRv != null || data.barNightRv != null)
+                + " ticker=" + data.ticker
+                + " hasIslandParam=" + data.hasIslandParam
+                + " islandParam=" + data.islandParam
+                + " nativeStatusBarContent=" + hasNativeStatusBarContent
+                + " forcePackage=" + currentSettings.islandForcePackages.contains(data.packageName));
+        if (data.isOriginalFocus && hasNativeStatusBarContent) {
+            boolean showOnStatusBar = false;
+            try {
+                Class<?> utils = FocusReflection.findClass(classLoader,
+                        "com.android.systemui.statusbar.notification.utils.FocusUtils");
+                Object result = XposedHelpers.callStaticMethod(utils, "showOnStatusBar", expanded);
+                showOnStatusBar = Boolean.TRUE.equals(result);
+            } catch (Throwable t) {
+                error("OS4 native showOnStatusBar key=" + key, t);
+            }
+            if (!showOnStatusBar) {
+                log("OS4 native Focus rejected by showOnStatusBar key=" + key
+                        + " " + data.summary());
+                return null;
+            }
+            return new HyperOS4FocusController.DisplayItem(key, data.packageName,
+                    cleanText(data.ticker), "nativeFocus", data.barRv, data.barNightRv,
+                    contentIntent, OS4FocusPriorityPolicy.PRIORITY_NATIVE_FOCUS);
+        }
+
+        // OS4 may mark an island notification as Focus before it has any native
+        // status-bar content. Classify without mutating mIsFocusNotification.
+        if (data.hasIslandParam && !hasNativeStatusBarContent) {
+            data.isOriginalFocus = false;
+        }
+        if (!shouldConvert(data)) return null;
+        IslandText islandText = extractIslandContent(data);
+        if (islandText == null || TextUtils.isEmpty(islandText.text)) return null;
+        int priority;
+        String source;
+        if (currentSettings.islandForcePackages.contains(data.packageName)) {
+            priority = OS4FocusPriorityPolicy.PRIORITY_ISLAND_WHITELIST;
+            source = "islandWhitelist:" + islandText.source;
+        } else if (isSmsVerificationCode(data)) {
+            priority = OS4FocusPriorityPolicy.PRIORITY_SMS_VERIFICATION;
+            source = "smsVerification:" + islandText.source;
+        } else {
+            priority = OS4FocusPriorityPolicy.PRIORITY_ISLAND;
+            source = "island:" + islandText.source;
+        }
+        return new HyperOS4FocusController.DisplayItem(key, data.packageName,
+                islandText.text, source, null, null, contentIntent, priority);
+    }
+
     private FocusData inspectBean(Object bean) {
         if (bean == null) return null;
         try {
@@ -1158,6 +1324,7 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
             data.packageName = notificationPackageName(expanded);
             boolean preMarked = preMarkedIslands.contains(expanded);
             boolean originalFocusField = getBooleanField(expanded, "mIsFocusNotification", false);
+            data.originalFocusField = originalFocusField;
             data.isFocus = originalFocusField;
 
             Notification notification = null;
@@ -1171,6 +1338,7 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
             if (notification == null || notification.extras == null) return data;
             Bundle extras = notification.extras;
             boolean explicitFocus = extras.getBoolean("miui.focus.isFocus", false);
+            data.explicitFocus = explicitFocus;
             data.isFocus = data.isFocus || explicitFocus;
             data.islandParam = extras.getString("miui.focus.param");
             if (TextUtils.isEmpty(data.islandParam)) {
@@ -1182,8 +1350,8 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
             data.mainNightRv = getRemoteViews(extras, "miui.focus.rvNight");
             data.barRv = getRemoteViews(extras, "miui.focus.rvBar");
             data.barNightRv = getRemoteViews(extras, "miui.focus.rvBarNight");
-            data.hasMainRv = data.mainRv != null;
-            data.hasBarRv = data.barRv != null;
+            data.hasMainRv = data.mainRv != null || data.mainNightRv != null;
+            data.hasBarRv = data.barRv != null || data.barNightRv != null;
             boolean hasTicker = !TextUtils.isEmpty(data.ticker);
             data.hasExplicitFocusData = FocusPriorityPolicy.hasExplicitFocusData(
                     explicitFocus, data.hasMainRv, data.hasBarRv, hasTicker, data.hasIslandParam);
@@ -1311,6 +1479,8 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
 
     private static final class FocusData {
         boolean isFocus;
+        boolean originalFocusField;
+        boolean explicitFocus;
         boolean isOriginalFocus;
         boolean hasMainRv;
         boolean hasBarRv;

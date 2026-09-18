@@ -1,6 +1,6 @@
 # HyperOS3FocusRestore
 
-用于 HyperOS 3 的实验性 LSPosed 模块，尝试恢复 HyperOS 2 的 Focus（焦点通知）状态栏显示路径。
+用于 HyperOS 3/4 的实验性 LSPosed 模块，尝试恢复 HyperOS 2 的 Focus（焦点通知）状态栏显示路径。
 
 仓库地址：`https://github.com/ImKani/HyperOS3FocusRestore`
 
@@ -24,15 +24,23 @@ GitHub：<https://github.com/ImKani/HyperOS3FocusRestore>
 
 ## 当前版本
 
-版本：`0.12.8`
+版本：`0.13.3`
 
-本版本修复短信验证码通知被 HyperOS 3 识别为原生 Focus 后无法正常显示的问题，并保留以下用户可见功能：
+本版本新增 HyperOS 4 手动适配，并保留原 HyperOS 3 Hook：
 
-- 恢复焦点通知状态栏显示
+- 由用户手动选择 HyperOS 3 或 HyperOS 4，默认 HyperOS 3；保存后重启 SystemUI 或设备生效
+- 设置会同步到 Direct Boot 可读的设备加密存储，确保开机解锁前启动的 SystemUI 能读取手动选择的模式
+- SystemUI 在 `Application.attach()` 阶段直接使用可用的 base Context 查询设置，避免 Application Context 尚未建立时误判设置不可用
+- 不自动检测系统版本，不在 Hook 缺失时自动切换或回退
+- HyperOS 3 继续使用原有 Focus Prompt 路径
+- HyperOS 4 监听通知管线，并使用状态栏 Primary Chip 位置显示原生 Focus 或转换后的超级岛文本
+- HyperOS 4 无候选时保持 ROM 已停用的 Legacy Primary Chip 为隐藏状态，避免默认通话图标、`00:00:00` 计时器和底色泄漏
+- 带 `miui.focus.param` 且没有原生 Bar RemoteViews 的 PARAMS 通知进入超级岛 JSON 文本解析，不再被系统生成的类别 ticker（例如 `Weather`）误判为原生 Focus
+- 原生 Focus 优先于手动白名单、短信验证码和普通超级岛转换
 - 超级岛内容转焦点通知（可选开关）
 - 焦点通知宽度限制与滚动方向控制
 - 焦点通知点击控制
-- 超级岛屏蔽
+- 两条超级岛屏蔽路径在两种模式下均保持启用
 - 测试工具已归档
 
 模块标识：
@@ -48,7 +56,8 @@ Hook 入口：com.hyperos3.focusrestore.HyperOS3FocusRestoreHook
 ## 功能概述
 
 - 通过 LSPosed 模块恢复 HyperOS 2 的焦点通知显示路径，使部分通知可以显示在状态栏焦点区域。
-- 提供“转换超级岛内容为焦点通知”开关，开启后会尝试从带有超级岛协议的通知中提取文本内容，补入焦点通知显示。仅处理文本，不支持图片、按钮或动态计时器；对于没有超级岛参数的普通通知不会生成额外内容。
+- HyperOS 3 模式保留原有 `FocusedNotifPromptView` Hook；HyperOS 4 模式通过通知集合事件维护显示状态，并复用系统 `ongoing_activity_chip_primary` 位置。两种模式只安装用户选择的对应 Hook。
+- 提供“转换超级岛内容为焦点通知”开关，开启后会尝试从带有超级岛协议的通知中提取文本内容，补入焦点通知显示。仅处理文本，不支持图片、按钮或动态计时器；对于没有超级岛参数的普通通知不会生成额外内容。HyperOS 4 转换不会强制修改 `mIsFocusNotification`。
 - 提供焦点通知宽度限制开关（默认开启，上限 160dp），防止长内容覆盖状态栏右侧图标。
 - 提供滚动方向开关：开启“往返滚动”时内容左右往返移动，关闭时单向滚动循环。可配合“兼容重试模式”使用，解决某些 ROM 滚动停止的问题。
 - 默认禁用所有焦点通知点击，避免点击后通知消失或异常；可在设置中手动开启，风险自负。
@@ -62,6 +71,7 @@ Hook 入口：com.hyperos3.focusrestore.HyperOS3FocusRestoreHook
 
 主要设置项：
 
+- **系统界面版本**：手动选择 HyperOS 3 或 HyperOS 4，默认 HyperOS 3。模块不会自动检测或回退；选错版本时只会记录缺失能力或 Hook 失败日志。
 - **超级岛内容转焦点通知**：默认关闭。开启后尝试从超级岛协议中提取文本内容并显示为焦点通知；关闭时不做转换。
 - **焦点通知宽度限制**：默认开启，上限 160dp；关闭后使用 ROM 原生宽度。
 - **往返滚动**：默认关闭。开启后内容左右往返滚动，关闭则单向循环。
@@ -82,8 +92,8 @@ Hook 入口：com.hyperos3.focusrestore.HyperOS3FocusRestoreHook
 
 设置页会明确提示以下内容：
 
-- HyperOS 3 上基本所有焦点通知都不支持点击。
-- 点击可能导致焦点通知消失或暂时不可见。
+- HyperOS 3 上基本所有焦点通知都不支持点击；HyperOS 4 模式关闭点击时会消费状态栏 Focus 区域的触摸事件。
+- 开启点击后，HyperOS 4 优先使用原生 RemoteViews 点击事件，转换文本使用通知 `contentIntent`；点击仍可能导致焦点通知消失或暂时不可见。
 - 点击后的系统通知逻辑可能无法正常处理。
 - 模块通过 LSPosed Hook 介入 SystemUI，存在 ROM 版本差异、系统崩溃、显示异常、功能失效和数据丢失风险。
 - 超级岛转换只处理通知实际提供的协议内容，不负责隐藏系统灵动舞台；需要隐藏时应使用其他工具。
@@ -91,7 +101,7 @@ Hook 入口：com.hyperos3.focusrestore.HyperOS3FocusRestoreHook
 
 ## 日志判读
 
-测试时可通过日志判断通知走向。若日志中主要出现 `DynamicIslandService` / `DynamicIslandController`，说明通知走了动态岛路径；若同时出现 `HyperOS3FocusRestore` 相关日志（如 `showOnStatusBar`、`before setData`、`after setData`、`updateRemoteViews begin` 等），则说明进入了本模块恢复的焦点通知路径。
+测试时先确认日志中的 `configuredMode=OS3/OS4` 和 `installedMode=OS3/OS4` 与手动选择一致。HyperOS 3 模式会记录 `showOnStatusBar`、`before setData`、`after setData`、`updateRemoteViews begin` 等日志；HyperOS 4 模式会记录 `notifPipelineListener`、`statusBarPrimarySlot`、`OS4 candidate` 和 `OS4 focus shown`。所有 Hook 独立安装和记录错误，某一项缺失不会触发自动模式回退。
 
 如果只有动态岛日志而没有模块日志，可能模块未生效或通知未满足焦点条件。如果模块日志中出现 `updateRemoteViews` 报错，说明 RemoteViews 与当前 SystemUI 不兼容。
 
@@ -114,15 +124,15 @@ Android Gradle Plugin 8.7.3
 构建 debug 或 release 变体，APK 输出路径：
 
 ```text
-app/build/outputs/apk/debug/HyperOS3FocusRestore-0.12.8-debug.apk
-app/build/outputs/apk/release/HyperOS3FocusRestore-0.12.8-release.apk
+app/build/outputs/apk/debug/HyperOS3FocusRestore-0.13.3-debug.apk
+app/build/outputs/apk/release/HyperOS3FocusRestore-0.13.3-release.apk
 ```
 
 模块不声明网络、存储、后台服务等额外权限。关于项目按钮通过系统浏览器打开外部链接，网络访问由浏览器处理。
 
 ## 安装和作用域
 
-1. 安装 `HyperOS3FocusRestore-0.12.8-release.apk` 或 `HyperOS3FocusRestore-0.12.8-debug.apk`。
+1. 安装 `HyperOS3FocusRestore-0.13.3-release.apk` 或 `HyperOS3FocusRestore-0.13.3-debug.apk`。
 2. 在 LSPosed 中启用本模块。
 3. 作用域应只有：
 
@@ -131,9 +141,10 @@ app/build/outputs/apk/release/HyperOS3FocusRestore-0.12.8-release.apk
 com.android.systemui
 ```
 
-4. 第一轮测试关闭 KernelSU 的动态岛属性模块。
-5. 重启设备，确保 SystemUI 的静态功能字段在 Hook 后初始化。
-6. 触发以前会显示超级岛或焦点通知的通知。
+4. 从 LSPosed 模块详情进入设置页，选择 HyperOS 3 或 HyperOS 4 并保存；默认 HyperOS 3。
+5. 第一轮测试关闭 KernelSU 的动态岛属性模块。
+6. 重启设备，确保 SystemUI 的静态功能字段和手动选择的 Hook 在启动阶段初始化。
+7. 触发以前会显示超级岛或焦点通知的通知。
 
 这是全新 Application ID，旧版模块不会自动升级。测试时请禁用旧模块，避免两个模块同时 Hook SystemUI。
 
@@ -194,13 +205,15 @@ adb logcat -v threadtime HyperOS3FocusRestore:I FocusedNotifPromptView:I PromptV
 ## 重点日志
 
 ```text
-HyperOS3FocusRestore: forced feature.island.debug=false
+HyperOS3FocusRestore: Dynamic Island property override: feature.island.debug=false
+HyperOS3FocusRestore: capabilities configuredMode=OS3 installedMode=OS3 ...
 HyperOS3FocusRestore: showOnStatusBar=...
 HyperOS3FocusRestore: before setData ...
-HyperOS3FocusRestore: after setData ...
-HyperOS3FocusRestore: updateRemoteViews begin ...
 HyperOS3FocusRestore: scheduled native focus marquee delayMs=...
-HyperOS3FocusRestore: started native focus marquee ...
+HyperOS3FocusRestore: capabilities configuredMode=OS4 installedMode=OS4 ...
+HyperOS3FocusRestore: OS4 notifPipelineListener=registered
+HyperOS3FocusRestore: OS4 statusBarPrimarySlot=attached ...
+HyperOS3FocusRestore: OS4 focus shown ...
 ```
 
 如果只有 `showOnStatusBar` 而没有 `setData`，说明判断已放行但通知没有进入焦点通知 View。如果只有 `DynamicIslandService`，说明它只进入了动态岛路径。若 `updateRemoteViews` 报错，说明 RemoteViews 与当前 SystemUI 的布局、资源或类不兼容。

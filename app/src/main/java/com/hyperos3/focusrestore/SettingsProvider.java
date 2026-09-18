@@ -2,18 +2,23 @@ package com.hyperos3.focusrestore;
 
 import android.content.ContentProvider;
 import android.content.ContentValues;
+import android.content.Context;
+import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.database.MatrixCursor;
 import android.net.Uri;
+import android.util.Log;
 
 import java.util.Collections;
 
 public final class SettingsProvider extends ContentProvider {
+    private static final String TAG = "HyperOS3FocusRestore";
     static final String AUTHORITY = "com.hyperos3.focusrestore.settings";
     static final Uri URI = Uri.parse("content://" + AUTHORITY + "/config");
-    static final String[] COLUMNS = {"limit_text_width", "text_width_dp", "marquee_delay_ms", "compat_retry", "island_compat", "island_separator", "allow_focus_click", "island_general_separator", "island_side_separator", "island_force_packages", "disable_island_property", "disable_island_feature_cache", "marquee_bounce"};
+    static final String[] COLUMNS = {"limit_text_width", "text_width_dp", "marquee_delay_ms", "compat_retry", "island_compat", "island_separator", "allow_focus_click", "island_general_separator", "island_side_separator", "island_force_packages", "disable_island_property", "disable_island_feature_cache", "marquee_bounce", "hook_mode"};
     static final String KEY_MARQUEE_DELAY_MS = FocusRestoreSettings.KEY_MARQUEE_DELAY_MS;
     static final int DEFAULT_MARQUEE_DELAY_MS = FocusRestoreSettings.DEFAULT_MARQUEE_DELAY_MS;
+    private String lastDiagnostic;
 
     @Override
     public boolean onCreate() {
@@ -24,9 +29,16 @@ public final class SettingsProvider extends ContentProvider {
     public Cursor query(Uri uri, String[] projection, String selection,
                         String[] selectionArgs, String sortOrder) {
         if (!URI.equals(uri) || getContext() == null) return null;
-        android.content.SharedPreferences preferences = getContext().getSharedPreferences(
-                FocusRestoreSettings.PREFS_NAME, 0);
+        Context context = getContext();
+        SharedPreferences preferences = FocusRestoreSettings.hookPreferences(context);
+        if (!FocusRestoreSettings.hasHookSettings(preferences)) {
+            logDiagnostic("provider settings unavailable storage=deviceProtected ready=false "
+                    + "columns=" + COLUMNS.length);
+            return null;
+        }
         FocusRestoreSettings settings = FocusRestoreSettings.fromPreferences(preferences);
+        logDiagnostic("provider settings storage=deviceProtected ready=true columns="
+                + COLUMNS.length + " " + settings.describe());
         String legacySeparator = preferences.getString(FocusRestoreSettings.KEY_ISLAND_SEPARATOR,
                 FocusRestoreSettings.DEFAULT_ISLAND_SEPARATOR);
         MatrixCursor cursor = new MatrixCursor(COLUMNS);
@@ -37,8 +49,14 @@ public final class SettingsProvider extends ContentProvider {
                 settings.islandSideSeparator, joinPackages(settings.islandForcePackages),
                  settings.disableIslandProperty ? 1 : 0,
                  settings.disableIslandFeatureCache ? 1 : 0,
-                  settings.marqueeBounce ? 1 : 0});
+                  settings.marqueeBounce ? 1 : 0, settings.hookMode});
         return cursor;
+    }
+
+    private void logDiagnostic(String diagnostic) {
+        if (diagnostic.equals(lastDiagnostic)) return;
+        lastDiagnostic = diagnostic;
+        Log.i(TAG, diagnostic);
     }
 
     private static String joinPackages(java.util.Set<String> packages) {
