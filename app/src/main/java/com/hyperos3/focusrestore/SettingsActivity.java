@@ -91,10 +91,12 @@ public final class SettingsActivity extends Activity {
     private Switch disableIslandPropertySwitch;
     private Switch disableIslandFeatureCacheSwitch;
     private Switch allowFocusClickSwitch;
+    private Switch hideNotificationIconsSwitch;
     private EditText generalSeparatorInput;
     private EditText sideSeparatorInput;
     private boolean pendingManual, pendingCompatRetry, pendingMarqueeBounce, pendingIslandCompat,
-            pendingDisableIslandProperty, pendingDisableIslandFeatureCache, pendingAllowFocusClick;
+            pendingDisableIslandProperty, pendingDisableIslandFeatureCache, pendingAllowFocusClick,
+            pendingHideNotificationIcons;
     private int pendingHookMode, pendingWidthDp, pendingDelayMs;
     private String pendingGeneralSeparator, pendingSideSeparator;
     private Set<String> pendingForcePackages = new HashSet<>();
@@ -299,9 +301,14 @@ public final class SettingsActivity extends Activity {
          allowFocusClickSwitch = new Switch(this);
         allowFocusClickSwitch.setText("允许焦点通知点击");
         styleSwitch(allowFocusClickSwitch);
+
+        hideNotificationIconsSwitch = new Switch(this);
+        hideNotificationIconsSwitch.setText("显示焦点通知时隐藏其他通知图标");
+        styleSwitch(hideNotificationIconsSwitch);
         compatPanel.addView(marqueeBounceSwitch, matchWrap(dp(8)));
         compatPanel.addView(islandCompatSwitch, matchWrap(dp(8)));
         compatPanel.addView(compatRetrySwitch, matchWrap(dp(8)));
+        compatPanel.addView(hideNotificationIconsSwitch, matchWrap(dp(8)));
         compatPanel.addView(allowFocusClickSwitch,
                 matchWrap(com.hyperos3.focusrestore.BuildConfig.DEBUG ? dp(8) : 0));
         if (com.hyperos3.focusrestore.BuildConfig.DEBUG) {
@@ -318,6 +325,9 @@ public final class SettingsActivity extends Activity {
         TextView retryNotice = text("• 兼容重试：默认关闭；开启后焦点通知内容最多尝试启动两次，适合偶尔不滚动的 ROM，但可能产生轻微抖动。", 13, COLOR_TEXT_SECONDARY);
         retryNotice.setPadding(dp(12), 0, dp(12), dp(4));
         root.addView(retryNotice, matchWrap(0));
+        TextView iconNotice = text("• 通知图标：默认在显示焦点通知时隐藏其他通知图标，焦点通知消失后恢复；右侧信号、电池等系统图标不受影响。", 13, COLOR_TEXT_SECONDARY);
+        iconNotice.setPadding(dp(12), 0, dp(12), dp(4));
+        root.addView(iconNotice, matchWrap(0));
         TextView clickWarning = text("• 点击风险：HyperOS 3 上基本所有焦点通知都不支持点击。点击可能导致焦点通知消失或不可见，相关系统逻辑也可能无法正常处理。默认关闭点击；只有确认接受风险后才建议开启。", 13, COLOR_TEXT_SECONDARY);
         clickWarning.setPadding(dp(12), dp(4), dp(12), dp(8));
         root.addView(clickWarning, matchWrap(dp(8)));
@@ -339,6 +349,7 @@ public final class SettingsActivity extends Activity {
             disableIslandFeatureCacheSwitch.setChecked(pendingDisableIslandFeatureCache);
         }
         allowFocusClickSwitch.setChecked(pendingAllowFocusClick);
+        hideNotificationIconsSwitch.setChecked(pendingHideNotificationIcons);
         installSettingsListeners();
     }
 
@@ -409,6 +420,10 @@ public final class SettingsActivity extends Activity {
             disableIslandFeatureCacheSwitch.setOnCheckedChangeListener((b, c) -> { pendingDisableIslandFeatureCache = c; markPending(); });
         }
         allowFocusClickSwitch.setOnCheckedChangeListener((b, c) -> { pendingAllowFocusClick = c; markPending(); });
+        hideNotificationIconsSwitch.setOnCheckedChangeListener((b, c) -> {
+            pendingHideNotificationIcons = c;
+            markPending();
+        });
     }
 
     private String forcePackagesLabel() {
@@ -686,6 +701,7 @@ public final class SettingsActivity extends Activity {
         pendingDisableIslandProperty = settings.disableIslandProperty;
         pendingDisableIslandFeatureCache = settings.disableIslandFeatureCache;
         pendingAllowFocusClick = settings.allowFocusClick;
+        pendingHideNotificationIcons = settings.hideNotificationIcons;
         pendingGeneralSeparator = settings.islandGeneralSeparator;
         pendingSideSeparator = settings.islandSideSeparator;
         pendingForcePackages = new HashSet<>(settings.islandForcePackages);
@@ -702,7 +718,8 @@ public final class SettingsActivity extends Activity {
         settings = FocusRestoreSettings.withValues(pendingHookMode, pendingManual,
                 pendingWidthDp, pendingDelayMs,
                 pendingCompatRetry, pendingMarqueeBounce, pendingIslandCompat, pendingDisableIslandProperty,
-                pendingDisableIslandFeatureCache, pendingAllowFocusClick, pendingGeneralSeparator,
+                pendingDisableIslandFeatureCache, pendingAllowFocusClick,
+                pendingHideNotificationIcons, pendingGeneralSeparator,
                 pendingSideSeparator, pendingForcePackages);
         boolean credentialSaved = settings.save(preferences);
         boolean hookSaved = settings.save(FocusRestoreSettings.hookPreferences(this));

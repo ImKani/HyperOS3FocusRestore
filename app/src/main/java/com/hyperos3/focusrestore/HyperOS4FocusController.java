@@ -79,8 +79,17 @@ final class HyperOS4FocusController {
     private final Set<Object> registeredPipelines = Collections.newSetFromMap(
             new WeakHashMap<Object, Boolean>());
     private long updateSequence;
+    private ViewGroup statusBarRoot;
     private ViewGroup primarySlot;
     private FocusHostView focusHost;
+    private TextView statusBarClock;
+    private View notificationIcons;
+    private int notificationIconsOriginalVisibility;
+    private boolean notificationIconsHidden;
+    private Object darkDispatcher;
+    private Object darkReceiver;
+    private Class<?> darkDispatcherClass;
+    private int currentTint = Color.WHITE;
 
     HyperOS4FocusController(ClassLoader classLoader, Context context,
                             ItemFactory itemFactory, Logger logger) {
@@ -93,6 +102,7 @@ final class HyperOS4FocusController {
     void install() {
         hookNotifPipeline();
         hookStatusBarView();
+        hookClockTint();
     }
 
     private void hookNotifPipeline() {
@@ -217,6 +227,27 @@ final class HyperOS4FocusController {
         }
     }
 
+    private void hookClockTint() {
+        try {
+            Class<?> clockClass = FocusReflection.findClass(classLoader,
+                    "com.android.systemui.statusbar.views.MiuiClock");
+            Set<XC_MethodHook.Unhook> hooks = XposedBridge.hookAllMethods(
+                    clockClass, "onDarkChanged", new XC_MethodHook() {
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) {
+                            if (param.thisObject == statusBarClock) {
+                                updateTint(((TextView) param.thisObject).getCurrentTextColor(),
+                                        "MiuiClock.onDarkChanged");
+                            }
+                        }
+                    });
+            logger.log("OS4 clockTintHook=" + (hooks.isEmpty() ? "missing" : "hooked")
+                    + " count=" + hooks.size());
+        } catch (Throwable throwable) {
+            logger.error("OS4 hookClockTint", throwable);
+        }
+    }
+
     private void attachStatusBar(ViewGroup statusBarView) {
         try {
             int primaryId = context.getResources().getIdentifier(
@@ -227,6 +258,7 @@ final class HyperOS4FocusController {
                 return;
             }
             ViewGroup slot = (ViewGroup) view;
+            restoreNotificationIcons();
             FocusHostView oldHost = focusHost;
             ViewGroup oldSlot = primarySlot;
             if (oldHost != null && oldHost.getParent() instanceof ViewGroup) {
@@ -241,8 +273,11 @@ final class HyperOS4FocusController {
             host.setVisibility(View.GONE);
             slot.addView(host, new ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            statusBarRoot = statusBarView;
             primarySlot = slot;
             focusHost = host;
+            resolveStatusBarClock();
+            registerDarkReceiver();
             // HyperOS 4 hides this legacy XML slot before installing its Compose
             // chip. Preserve that inactive state so the XML defaults (phone icon,
             // 00:00:00 chronometer and background) never leak between candidates.
@@ -280,11 +315,14 @@ final class HyperOS4FocusController {
             host.setVisibility(View.GONE);
             ViewGroup slot = primarySlot;
             if (slot != null) slot.setVisibility(View.GONE);
-            logger.log("OS4 focus hidden; no eligible notification legacySlot=GONE");
+            restoreNotificationIcons();
+            logger.log("OS4 focus hidden; no eligible notification legacySlot=GONE"
+                    + " notificationIconsRestored=true");
             return;
         }
         HookSettings settings = itemFactory.settings();
         hideOriginalChildren();
+        setNotificationIconsHidden(settings.hideNotificationIcons);
         host.setVisibility(View.VISIBLE);
         boolean night = (host.getResources().getConfiguration().uiMode
                 & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
@@ -303,7 +341,7 @@ final class HyperOS4FocusController {
             TextView textView = new TextView(host.getContext());
             textView.setText(item.text);
             textView.setTextSize(14f);
-            textView.setTextColor(night ? Color.WHITE : Color.BLACK);
+            textView.setTextColor(currentTint);
             textView.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
             textView.setSingleLine(true);
             textView.setEllipsize(null);
@@ -321,7 +359,160 @@ final class HyperOS4FocusController {
         logger.log("OS4 focus shown key=" + item.key + " package=" + item.packageName
                 + " source=" + item.source + " priority=" + item.priority
                 + " widthDp=" + settings.widthDp + " limit=" + settings.limitWidth
+                + " maxWidthPx=" + host.maxWidthPx
+                + " hideNotificationIcons=" + settings.hideNotificationIcons
+                + " tint=0x" + Integer.toHexString(currentTint)
                 + " click=" + settings.allowFocusClick);
+    }
+
+    private void resolveStatusBarClock() {
+        ViewGroup root = statusBarRoot;
+        if (root == null) return;
+        int id = root.getResources().getIdentifier("clock", "id", context.getPackageName());
+        View view = id == 0 ? null : root.findViewById(id);
+        statusBarClock = view instanceof TextView ? (TextView) view : null;
+        if (statusBarClock != null) {
+            currentTint = statusBarClock.getCurrentTextColor();
+            logger.log("OS4 statusBarClock=resolved tint=0x"
+                    + Integer.toHexString(currentTint));
+        } else {
+            logger.log("OS4 statusBarClock=missing id=" + id);
+        }
+    }
+
+    private void registerDarkReceiver() {
+        unregisterDarkReceiver();
+        try {
+            darkDispatcherClass = FocusReflection.findClass(classLoader,
+                    "com.android.systemui.plugins.DarkIconDispatcher");
+            Class<?> receiverClass = FocusReflection.findClass(classLoader,
+                    "com.android.systemui.plugins.DarkIconDispatcher$DarkReceiver");
+            Class<?> dependencyClass = FocusReflection.findClass(classLoader,
+                    "com.android.systemui.Dependency");
+            darkDispatcher = XposedHelpers.callStaticMethod(
+                    dependencyClass, "get", darkDispatcherClass);
+            darkReceiver = Proxy.newProxyInstance(classLoader,
+                    new Class<?>[]{receiverClass}, new InvocationHandler() {
+                        @Override
+                        public Object invoke(Object proxy, Method method, Object[] args) {
+                            String name = method.getName();
+                            if (("onDarkChanged".equals(name)
+                                    || "onDarkChangedWithContrast".equals(name))
+                                    && args != null && args.length >= 3
+                                    && args[2] instanceof Integer) {
+                                int tint = resolveTint(args[0], (Integer) args[2]);
+                                updateTint(tint, "DarkIconDispatcher." + name);
+                            } else if ("hashCode".equals(name)) {
+                                return System.identityHashCode(proxy);
+                            } else if ("equals".equals(name)) {
+                                return args != null && args.length == 1 && proxy == args[0];
+                            } else if ("toString".equals(name)) {
+                                return "FocusRestoreDarkReceiver";
+                            }
+                            return null;
+                        }
+                    });
+            XposedHelpers.callMethod(darkDispatcher, "addDarkReceiver", darkReceiver);
+            try {
+                XposedHelpers.callMethod(darkDispatcher, "applyDark", darkReceiver);
+            } catch (Throwable throwable) {
+                logger.error("OS4 applyInitialDark", throwable);
+            }
+            logger.log("OS4 darkReceiver=registered dispatcher="
+                    + darkDispatcher.getClass().getName());
+        } catch (Throwable throwable) {
+            darkDispatcher = null;
+            darkReceiver = null;
+            darkDispatcherClass = null;
+            logger.error("OS4 registerDarkReceiver", throwable);
+        }
+    }
+
+    private int resolveTint(Object areas, int fallbackTint) {
+        View tintReference = statusBarClock != null ? statusBarClock : focusHost;
+        if (tintReference == null || darkDispatcherClass == null) return fallbackTint;
+        try {
+            Object value = XposedHelpers.callStaticMethod(
+                    darkDispatcherClass, "getTint", areas, tintReference, fallbackTint);
+            return value instanceof Integer ? (Integer) value : fallbackTint;
+        } catch (Throwable throwable) {
+            logger.error("OS4 resolveDarkTint", throwable);
+            return fallbackTint;
+        }
+    }
+
+    private void unregisterDarkReceiver() {
+        if (darkDispatcher == null || darkReceiver == null) return;
+        try {
+            XposedHelpers.callMethod(darkDispatcher, "removeDarkReceiver", darkReceiver);
+        } catch (Throwable throwable) {
+            logger.error("OS4 unregisterDarkReceiver", throwable);
+        } finally {
+            darkDispatcher = null;
+            darkReceiver = null;
+            darkDispatcherClass = null;
+        }
+    }
+
+    private void updateTint(int tint, String source) {
+        if (currentTint == tint) return;
+        currentTint = tint;
+        FocusHostView host = focusHost;
+        if (host != null) applyTint(host);
+        logger.log("OS4 tint updated source=" + source + " tint=0x"
+                + Integer.toHexString(tint));
+    }
+
+    private void applyTint(View view) {
+        if (view instanceof TextView) {
+            ((TextView) view).setTextColor(currentTint);
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int index = 0; index < group.getChildCount(); index++) {
+                applyTint(group.getChildAt(index));
+            }
+        }
+    }
+
+    private void setNotificationIconsHidden(boolean hidden) {
+        if (!hidden) {
+            restoreNotificationIcons();
+            return;
+        }
+        View icons = resolveNotificationIcons();
+        if (icons == null) {
+            logger.log("OS4 notificationIcons=missing requestedHidden=true");
+            return;
+        }
+        if (!notificationIconsHidden || notificationIcons != icons) {
+            restoreNotificationIcons();
+            notificationIcons = icons;
+            notificationIconsOriginalVisibility = icons.getVisibility();
+            notificationIconsHidden = true;
+        }
+        icons.setVisibility(View.GONE);
+        logger.log("OS4 notificationIcons=GONE id=" + icons.getId()
+                + " originalVisibility=" + notificationIconsOriginalVisibility);
+    }
+
+    private View resolveNotificationIcons() {
+        ViewGroup root = statusBarRoot;
+        if (root == null) return null;
+        int id = root.getResources().getIdentifier(
+                "notificationIcons", "id", context.getPackageName());
+        return id == 0 ? null : root.findViewById(id);
+    }
+
+    private void restoreNotificationIcons() {
+        if (!notificationIconsHidden) return;
+        View icons = notificationIcons;
+        if (icons != null) icons.setVisibility(notificationIconsOriginalVisibility);
+        logger.log("OS4 notificationIcons=restored id="
+                + (icons == null ? 0 : icons.getId())
+                + " visibility=" + notificationIconsOriginalVisibility);
+        notificationIcons = null;
+        notificationIconsHidden = false;
     }
 
     private void hideOriginalChildren() {
@@ -368,6 +559,7 @@ final class HyperOS4FocusController {
                     ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT,
                     Gravity.CENTER_VERTICAL | Gravity.START);
             addView(nextContent, params);
+            applyTint(nextContent);
             if (settings.allowFocusClick && item.contentIntent != null
                     && !(nextContent instanceof ViewGroup)) {
                 nextContent.setOnClickListener(view -> send(item.contentIntent, item.key));
@@ -406,7 +598,7 @@ final class HyperOS4FocusController {
             }
             if (distance <= 0) {
                 logger.log("OS4 marquee not needed contentWidth=" + child.getMeasuredWidth()
-                        + " hostWidth=" + getWidth());
+                        + " hostWidth=" + getWidth() + " maxWidthPx=" + maxWidthPx);
                 return;
             }
             float direction = getLayoutDirection() == View.LAYOUT_DIRECTION_RTL ? 1f : -1f;
@@ -422,7 +614,9 @@ final class HyperOS4FocusController {
                 }
             });
             animator.start();
-            logger.log("OS4 marquee started distance=" + distance + " bounce=" + bounce);
+            logger.log("OS4 marquee started distance=" + distance + " bounce=" + bounce
+                    + " contentWidth=" + child.getMeasuredWidth()
+                    + " hostWidth=" + getWidth() + " maxWidthPx=" + maxWidthPx);
         }
 
         @Override

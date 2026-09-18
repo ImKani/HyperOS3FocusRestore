@@ -15,7 +15,7 @@ public final class SettingsProvider extends ContentProvider {
     private static final String TAG = "HyperOS3FocusRestore";
     static final String AUTHORITY = "com.hyperos3.focusrestore.settings";
     static final Uri URI = Uri.parse("content://" + AUTHORITY + "/config");
-    static final String[] COLUMNS = {"limit_text_width", "text_width_dp", "marquee_delay_ms", "compat_retry", "island_compat", "island_separator", "allow_focus_click", "island_general_separator", "island_side_separator", "island_force_packages", "disable_island_property", "disable_island_feature_cache", "marquee_bounce", "hook_mode"};
+    static final String[] COLUMNS = {"limit_text_width", "text_width_dp", "marquee_delay_ms", "compat_retry", "island_compat", "island_separator", "allow_focus_click", "island_general_separator", "island_side_separator", "island_force_packages", "disable_island_property", "disable_island_feature_cache", "marquee_bounce", "hook_mode", "hide_notification_icons"};
     static final String KEY_MARQUEE_DELAY_MS = FocusRestoreSettings.KEY_MARQUEE_DELAY_MS;
     static final int DEFAULT_MARQUEE_DELAY_MS = FocusRestoreSettings.DEFAULT_MARQUEE_DELAY_MS;
     private String lastDiagnostic;
@@ -49,7 +49,8 @@ public final class SettingsProvider extends ContentProvider {
                 settings.islandSideSeparator, joinPackages(settings.islandForcePackages),
                  settings.disableIslandProperty ? 1 : 0,
                  settings.disableIslandFeatureCache ? 1 : 0,
-                  settings.marqueeBounce ? 1 : 0, settings.hookMode});
+                  settings.marqueeBounce ? 1 : 0, settings.hookMode,
+                  settings.hideNotificationIcons ? 1 : 0});
         return cursor;
     }
 
