@@ -4,6 +4,7 @@ import android.animation.ValueAnimator;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.res.Configuration;
+import android.graphics.Canvas;
 import android.graphics.Color;
 import android.text.TextUtils;
 import android.view.Gravity;
@@ -361,6 +362,7 @@ final class HyperOS4FocusController {
                 + " widthDp=" + settings.widthDp + " limit=" + settings.limitWidth
                 + " maxWidthPx=" + host.maxWidthPx
                 + " hideNotificationIcons=" + settings.hideNotificationIcons
+                + " showFocusDivider=" + settings.showFocusDivider
                 + " tint=0x" + Integer.toHexString(currentTint)
                 + " click=" + settings.allowFocusClick);
     }
@@ -458,7 +460,10 @@ final class HyperOS4FocusController {
         if (currentTint == tint) return;
         currentTint = tint;
         FocusHostView host = focusHost;
-        if (host != null) applyTint(host);
+        if (host != null) {
+            applyTint(host);
+            host.updateDividerTint();
+        }
         logger.log("OS4 tint updated source=" + source + " tint=0x"
                 + Integer.toHexString(tint));
     }
@@ -539,6 +544,8 @@ final class HyperOS4FocusController {
         private ValueAnimator animator;
         private Runnable pendingAnimation;
         private View content;
+        private View divider;
+        private int contentInsetPx;
         private int maxWidthPx = Integer.MAX_VALUE;
         private boolean blockClicks = true;
 
@@ -554,10 +561,22 @@ final class HyperOS4FocusController {
             float density = getResources().getDisplayMetrics().density;
             maxWidthPx = settings.limitWidth
                     ? Math.max(1, Math.round(settings.widthDp * density)) : Integer.MAX_VALUE;
+            if (settings.showFocusDivider) {
+                int dividerWidth = Math.max(1, Math.round(density));
+                int dividerHeight = Math.max(1, Math.round(12f * density));
+                contentInsetPx = dividerWidth + Math.max(1, Math.round(6f * density));
+                divider = new View(getContext());
+                divider.setBackgroundColor(currentTint);
+                divider.setAlpha(0.45f);
+                LayoutParams dividerParams = new LayoutParams(
+                        dividerWidth, dividerHeight, Gravity.CENTER_VERTICAL | Gravity.START);
+                addView(divider, dividerParams);
+            }
             content = nextContent;
             LayoutParams params = new LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT,
                     Gravity.CENTER_VERTICAL | Gravity.START);
+            params.setMarginStart(contentInsetPx);
             addView(nextContent, params);
             applyTint(nextContent);
             if (settings.allowFocusClick && item.contentIntent != null
@@ -584,21 +603,25 @@ final class HyperOS4FocusController {
             if (content != null) content.setTranslationX(0f);
             removeAllViews();
             content = null;
+            divider = null;
+            contentInsetPx = 0;
         }
 
         private void startScroll(boolean bounce) {
             pendingAnimation = null;
             View child = content;
             if (child == null || getVisibility() != View.VISIBLE) return;
-            int distance = child.getMeasuredWidth() - getWidth();
+            int availableWidth = Math.max(1, getWidth() - contentInsetPx);
+            int distance = child.getMeasuredWidth() - availableWidth;
             if (distance <= 0 && child instanceof TextView) {
                 TextView text = (TextView) child;
                 distance = Math.round(text.getPaint().measureText(String.valueOf(text.getText())))
-                        - getWidth() + text.getPaddingLeft() + text.getPaddingRight();
+                        - availableWidth + text.getPaddingLeft() + text.getPaddingRight();
             }
             if (distance <= 0) {
                 logger.log("OS4 marquee not needed contentWidth=" + child.getMeasuredWidth()
-                        + " hostWidth=" + getWidth() + " maxWidthPx=" + maxWidthPx);
+                        + " hostWidth=" + getWidth() + " maxWidthPx=" + maxWidthPx
+                        + " contentInsetPx=" + contentInsetPx);
                 return;
             }
             float direction = getLayoutDirection() == View.LAYOUT_DIRECTION_RTL ? 1f : -1f;
@@ -617,6 +640,26 @@ final class HyperOS4FocusController {
             logger.log("OS4 marquee started distance=" + distance + " bounce=" + bounce
                     + " contentWidth=" + child.getMeasuredWidth()
                     + " hostWidth=" + getWidth() + " maxWidthPx=" + maxWidthPx);
+        }
+
+        void updateDividerTint() {
+            if (divider != null) divider.setBackgroundColor(currentTint);
+        }
+
+        @Override
+        protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
+            if (child != content || contentInsetPx <= 0) {
+                return super.drawChild(canvas, child, drawingTime);
+            }
+            int saveCount = canvas.save();
+            if (getLayoutDirection() == View.LAYOUT_DIRECTION_RTL) {
+                canvas.clipRect(0, 0, getWidth() - contentInsetPx, getHeight());
+            } else {
+                canvas.clipRect(contentInsetPx, 0, getWidth(), getHeight());
+            }
+            boolean drawn = super.drawChild(canvas, child, drawingTime);
+            canvas.restoreToCount(saveCount);
+            return drawn;
         }
 
         @Override

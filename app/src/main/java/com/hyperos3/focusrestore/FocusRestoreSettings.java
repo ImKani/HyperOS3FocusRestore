@@ -27,6 +27,7 @@ public final class FocusRestoreSettings {
     public static final String KEY_DISABLE_ISLAND_FEATURE_CACHE = "disable_island_feature_cache";
     public static final String KEY_HOOK_MODE = "hook_mode";
     public static final String KEY_HIDE_NOTIFICATION_ICONS = "hide_notification_icons";
+    public static final String KEY_SHOW_FOCUS_DIVIDER = "show_focus_divider";
     static final String KEY_HOOK_SETTINGS_READY = "hook_settings_ready";
     public static final String PACKAGE_SET_SEPARATOR = "\u001f";
 
@@ -46,6 +47,7 @@ public final class FocusRestoreSettings {
     public static final boolean DEFAULT_DISABLE_ISLAND_FEATURE_CACHE = true;
     public static final boolean DEFAULT_ALLOW_FOCUS_CLICK = false;
     public static final boolean DEFAULT_HIDE_NOTIFICATION_ICONS = true;
+    public static final boolean DEFAULT_SHOW_FOCUS_DIVIDER = true;
     public static final String DEFAULT_ISLAND_SEPARATOR = "·";
 
     public final int hookMode;
@@ -59,6 +61,7 @@ public final class FocusRestoreSettings {
     public final boolean disableIslandFeatureCache;
     public final boolean allowFocusClick;
     public final boolean hideNotificationIcons;
+    public final boolean showFocusDivider;
     public final String islandGeneralSeparator;
     public final String islandSideSeparator;
     public final Set<String> islandForcePackages;
@@ -67,7 +70,8 @@ public final class FocusRestoreSettings {
                                  boolean compatRetry, boolean marqueeBounce, boolean islandCompat,
                                  boolean disableIslandProperty, boolean disableIslandFeatureCache,
                                  boolean allowFocusClick, boolean hideNotificationIcons,
-                                 String islandGeneralSeparator, String islandSideSeparator,
+                                 boolean showFocusDivider, String islandGeneralSeparator,
+                                 String islandSideSeparator,
                                  Set<String> islandForcePackages) {
         this.hookMode = normalizeHookMode(hookMode);
         this.limitWidth = limitWidth;
@@ -80,6 +84,7 @@ public final class FocusRestoreSettings {
         this.disableIslandFeatureCache = disableIslandFeatureCache;
         this.allowFocusClick = allowFocusClick;
         this.hideNotificationIcons = hideNotificationIcons;
+        this.showFocusDivider = showFocusDivider;
         this.islandGeneralSeparator = valueOrDefault(islandGeneralSeparator);
         this.islandSideSeparator = valueOrDefault(islandSideSeparator);
         this.islandForcePackages = immutablePackages(islandForcePackages);
@@ -91,7 +96,8 @@ public final class FocusRestoreSettings {
                 DEFAULT_ISLAND_COMPAT,
                 DEFAULT_DISABLE_ISLAND_PROPERTY, DEFAULT_DISABLE_ISLAND_FEATURE_CACHE,
                 DEFAULT_ALLOW_FOCUS_CLICK, DEFAULT_HIDE_NOTIFICATION_ICONS,
-                DEFAULT_ISLAND_SEPARATOR, DEFAULT_ISLAND_SEPARATOR,
+                DEFAULT_SHOW_FOCUS_DIVIDER, DEFAULT_ISLAND_SEPARATOR,
+                DEFAULT_ISLAND_SEPARATOR,
                 Collections.<String>emptySet());
     }
 
@@ -100,13 +106,14 @@ public final class FocusRestoreSettings {
                                                   boolean compatRetry, boolean marqueeBounce, boolean islandCompat,
                                                   boolean disableIslandProperty, boolean disableIslandFeatureCache,
                                                   boolean allowFocusClick, boolean hideNotificationIcons,
-                                                  String islandGeneralSeparator, String islandSideSeparator,
+                                                  boolean showFocusDivider, String islandGeneralSeparator,
+                                                  String islandSideSeparator,
                                                   Set<String> islandForcePackages) {
         return new FocusRestoreSettings(hookMode, limitWidth, widthDp, marqueeDelayMs,
                 compatRetry, marqueeBounce,
                 islandCompat, disableIslandProperty, disableIslandFeatureCache,
-                allowFocusClick, hideNotificationIcons, islandGeneralSeparator,
-                islandSideSeparator, islandForcePackages);
+                allowFocusClick, hideNotificationIcons, showFocusDivider,
+                islandGeneralSeparator, islandSideSeparator, islandForcePackages);
     }
 
     public static SharedPreferences hookPreferences(Context context) {
@@ -132,6 +139,7 @@ public final class FocusRestoreSettings {
                 preferences.getBoolean(KEY_DISABLE_ISLAND_FEATURE_CACHE, DEFAULT_DISABLE_ISLAND_FEATURE_CACHE),
                 preferences.getBoolean(KEY_ALLOW_FOCUS_CLICK, DEFAULT_ALLOW_FOCUS_CLICK),
                 preferences.getBoolean(KEY_HIDE_NOTIFICATION_ICONS, DEFAULT_HIDE_NOTIFICATION_ICONS),
+                preferences.getBoolean(KEY_SHOW_FOCUS_DIVIDER, DEFAULT_SHOW_FOCUS_DIVIDER),
                 preferences.getString(KEY_ISLAND_GENERAL_SEPARATOR, legacy),
                 preferences.getString(KEY_ISLAND_SIDE_SEPARATOR, legacy),
                 preferences.getStringSet(KEY_ISLAND_FORCE_PACKAGES, Collections.<String>emptySet()));
@@ -145,6 +153,7 @@ public final class FocusRestoreSettings {
                 + " disableIslandFeatureCache=" + disableIslandFeatureCache
                 + " allowFocusClick=" + allowFocusClick
                 + " hideNotificationIcons=" + hideNotificationIcons
+                + " showFocusDivider=" + showFocusDivider
                 + " forcePackages=" + islandForcePackages
                 + " islandSeparator=" + displaySeparator(islandGeneralSeparator)
                 + " islandSideSeparator=" + displaySeparator(islandSideSeparator);
@@ -163,6 +172,7 @@ public final class FocusRestoreSettings {
                 .putBoolean(KEY_DISABLE_ISLAND_FEATURE_CACHE, disableIslandFeatureCache)
                 .putBoolean(KEY_ALLOW_FOCUS_CLICK, allowFocusClick)
                 .putBoolean(KEY_HIDE_NOTIFICATION_ICONS, hideNotificationIcons)
+                .putBoolean(KEY_SHOW_FOCUS_DIVIDER, showFocusDivider)
                 .putString(KEY_ISLAND_GENERAL_SEPARATOR, islandGeneralSeparator)
                 .putString(KEY_ISLAND_SIDE_SEPARATOR, islandSideSeparator)
                 .putString(KEY_ISLAND_SEPARATOR, islandGeneralSeparator)

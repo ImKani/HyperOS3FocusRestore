@@ -19,6 +19,7 @@ final class HookSettings {
     final boolean disableIslandFeatureCache;
     final boolean allowFocusClick;
     final boolean hideNotificationIcons;
+    final boolean showFocusDivider;
     final String generalSeparator;
     final String sideSeparator;
     final Set<String> islandForcePackages;
@@ -27,7 +28,8 @@ final class HookSettings {
                          boolean compatRetry, boolean marqueeBounce, boolean islandCompat,
                          boolean disableIslandProperty, boolean disableIslandFeatureCache,
                          boolean allowFocusClick, boolean hideNotificationIcons,
-                         String generalSeparator, String sideSeparator, Set<String> forcePackages) {
+                         boolean showFocusDivider, String generalSeparator,
+                         String sideSeparator, Set<String> forcePackages) {
         this.hookMode = FocusRestoreSettings.normalizeHookMode(hookMode);
         this.limitWidth = limitWidth;
         this.widthDp = clamp(widthDp, FocusRestoreSettings.MIN_WIDTH_DP,
@@ -40,6 +42,7 @@ final class HookSettings {
         this.disableIslandFeatureCache = disableIslandFeatureCache;
         this.allowFocusClick = allowFocusClick;
         this.hideNotificationIcons = hideNotificationIcons;
+        this.showFocusDivider = showFocusDivider;
         this.generalSeparator = generalSeparator == null
                 ? FocusRestoreSettings.DEFAULT_ISLAND_SEPARATOR : generalSeparator;
         this.sideSeparator = sideSeparator == null
@@ -57,6 +60,7 @@ final class HookSettings {
                 FocusRestoreSettings.DEFAULT_DISABLE_ISLAND_FEATURE_CACHE,
                 FocusRestoreSettings.DEFAULT_ALLOW_FOCUS_CLICK,
                 FocusRestoreSettings.DEFAULT_HIDE_NOTIFICATION_ICONS,
+                FocusRestoreSettings.DEFAULT_SHOW_FOCUS_DIVIDER,
                 FocusRestoreSettings.DEFAULT_ISLAND_SEPARATOR, FocusRestoreSettings.DEFAULT_ISLAND_SEPARATOR,
                 Collections.<String>emptySet());
     }
@@ -94,12 +98,14 @@ final class HookSettings {
                 ? cursor.getInt(13) : FocusRestoreSettings.DEFAULT_HOOK_MODE;
         boolean hideNotificationIcons = columnCount > 14 && !cursor.isNull(14)
                 ? cursor.getInt(14) != 0 : FocusRestoreSettings.DEFAULT_HIDE_NOTIFICATION_ICONS;
+        boolean showFocusDivider = columnCount > 15 && !cursor.isNull(15)
+                ? cursor.getInt(15) != 0 : FocusRestoreSettings.DEFAULT_SHOW_FOCUS_DIVIDER;
 
         return new HookSettings(hookMode, limitWidth, widthDp, marqueeDelayMs,
                 compatRetry, marqueeBounce,
                 islandCompat, disableIslandProperty, disableIslandFeatureCache,
-                allowFocusClick, hideNotificationIcons, generalSeparator,
-                sideSeparator, forcePackages);
+                allowFocusClick, hideNotificationIcons, showFocusDivider,
+                generalSeparator, sideSeparator, forcePackages);
     }
 
     String describe() {
@@ -111,6 +117,7 @@ final class HookSettings {
                  + " disableIslandFeatureCache=" + disableIslandFeatureCache
                  + " allowFocusClick=" + allowFocusClick
                 + " hideNotificationIcons=" + hideNotificationIcons
+                + " showFocusDivider=" + showFocusDivider
                 + " forcePackages=" + islandForcePackages
                 + " islandSeparator=" + displaySeparator(generalSeparator)
                 + " islandSideSeparator=" + displaySeparator(sideSeparator);

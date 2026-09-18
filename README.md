@@ -24,7 +24,7 @@ GitHub：<https://github.com/ImKani/HyperOS3FocusRestore>
 
 ## 当前版本
 
-版本：`0.13.4`
+版本：`0.13.6`
 
 本版本新增 HyperOS 4 手动适配，并保留原 HyperOS 3 Hook：
 
@@ -36,6 +36,7 @@ GitHub：<https://github.com/ImKani/HyperOS3FocusRestore>
 - HyperOS 4 监听通知管线，并使用状态栏 Primary Chip 位置显示原生 Focus 或转换后的超级岛文本
 - HyperOS 4 无候选时保持 ROM 已停用的 Legacy Primary Chip 为隐藏状态，避免默认通话图标、`00:00:00` 计时器和底色泄漏
 - HyperOS 4 接入状态栏 `DarkIconDispatcher`，焦点文字使用与状态栏时间相同的实时明暗 tint，而不是仅按深色模式切换
+- HyperOS 4 默认恢复时间与焦点内容之间的分隔竖线，可在设置中关闭；竖线与时间使用相同的实时 tint，正文滚动时保持固定
 - 默认在焦点通知显示期间隐藏左侧通知图标容器，焦点消失后恢复 ROM 原 visibility；右侧信号、电池等系统图标不受影响
 - 带 `miui.focus.param` 且没有原生 Bar RemoteViews 的 PARAMS 通知进入超级岛 JSON 文本解析，不再被系统生成的类别 ticker（例如 `Weather`）误判为原生 Focus
 - 原生 Focus 优先于手动白名单、短信验证码和普通超级岛转换
@@ -62,7 +63,8 @@ Hook 入口：com.hyperos3.focusrestore.HyperOS3FocusRestoreHook
 - 提供“转换超级岛内容为焦点通知”开关，开启后会尝试从带有超级岛协议的通知中提取文本内容，补入焦点通知显示。仅处理文本，不支持图片、按钮或动态计时器；对于没有超级岛参数的普通通知不会生成额外内容。HyperOS 4 转换不会强制修改 `mIsFocusNotification`。
 - 提供焦点通知宽度限制开关（默认开启，上限 160dp）。HyperOS 4 会先测量完整内容，再将显示 Host 截断到该上限并在超宽时滚动。
 - HyperOS 4 焦点内容跟随状态栏时钟实时反色，适配浅色/深色应用界面和状态栏外观变化。
-- 提供“显示焦点通知时隐藏其他通知图标”开关，默认开启；只隐藏左侧通知图标容器，焦点消失后恢复。
+- 提供两个 HyperOS 4 专用开关：“焦点通知隐藏其他图标”和“显示焦点通知分隔竖线”，均默认开启；选择 HyperOS 3 时保留其设置值但在界面中浅色禁用。
+- 隐藏图标只影响左侧通知图标容器，焦点消失后恢复；分隔竖线固定在内容左侧并跟随状态栏时间反色。
 - 提供滚动方向开关：开启“往返滚动”时内容左右往返移动，关闭时单向滚动循环。可配合“兼容重试模式”使用，解决某些 ROM 滚动停止的问题。
 - 默认禁用所有焦点通知点击，避免点击后通知消失或异常；可在设置中手动开启，风险自负。
 - 模块始终尝试关闭 HyperOS 超级岛显示路径，避免其占用状态栏区域。
@@ -78,10 +80,11 @@ Hook 入口：com.hyperos3.focusrestore.HyperOS3FocusRestoreHook
 - **系统界面版本**：手动选择 HyperOS 3 或 HyperOS 4，默认 HyperOS 3。模块不会自动检测或回退；选错版本时只会记录缺失能力或 Hook 失败日志。
 - **超级岛内容转焦点通知**：默认关闭。开启后尝试从超级岛协议中提取文本内容并显示为焦点通知；关闭时不做转换。
 - **焦点通知宽度限制**：默认开启，上限 160dp；关闭后使用 ROM 原生宽度。HyperOS 4 日志会记录 `contentWidth`、`hostWidth` 和 `maxWidthPx`。
-- **显示焦点通知时隐藏其他通知图标**：默认开启。只在焦点内容可见期间隐藏 `notificationIcons`，焦点消失后恢复。
+- **焦点通知隐藏其他图标（HyperOS 4）**：默认开启。只在焦点内容可见期间隐藏 `notificationIcons`，焦点消失后恢复。选择 HyperOS 3 时该项浅色禁用，但保存值不变。
+- **显示焦点通知分隔竖线（HyperOS 4）**：默认开启。在时间与焦点内容之间显示固定竖线，颜色跟随状态栏时间实时反色。选择 HyperOS 3 时该项浅色禁用，但保存值不变。
 - **往返滚动**：默认开启。开启后内容左右往返滚动，关闭则单向循环。
 - **兼容重试模式**：默认关闭。开启后滚动任务最多启动两次，适用于某些 ROM 布局刷新后重置跑马灯的情况。
-- **允许焦点通知点击**：默认关闭。开启后点击事件交由系统处理，可能再次出现通知不可见或消失。
+- **调试：允许焦点通知点击**：默认关闭，仅用于调试，不保证可用。开启后可能导致焦点通知消失、不可见、误触发，或使系统通知逻辑处理异常。
 
 ## 系统灵动舞台
 
@@ -97,8 +100,8 @@ Hook 入口：com.hyperos3.focusrestore.HyperOS3FocusRestoreHook
 
 设置页会明确提示以下内容：
 
-- HyperOS 3 上基本所有焦点通知都不支持点击；HyperOS 4 模式关闭点击时会消费状态栏 Focus 区域的触摸事件。
-- 开启点击后，HyperOS 4 优先使用原生 RemoteViews 点击事件，转换文本使用通知 `contentIntent`；点击仍可能导致焦点通知消失或暂时不可见。
+- “调试：允许焦点通知点击”仅用于调试且功能不可靠；HyperOS 3 上基本所有焦点通知都不支持点击，HyperOS 4 模式关闭点击时会消费状态栏 Focus 区域的触摸事件。
+- 开启调试点击后，HyperOS 4 优先使用原生 RemoteViews 点击事件，转换文本使用通知 `contentIntent`；这些事件可能无效，并可能导致焦点通知消失、不可见、误触发或系统处理异常。
 - 点击后的系统通知逻辑可能无法正常处理。
 - 模块通过 LSPosed Hook 介入 SystemUI，存在 ROM 版本差异、系统崩溃、显示异常、功能失效和数据丢失风险。
 - 超级岛转换只处理通知实际提供的协议内容，不负责隐藏系统灵动舞台；需要隐藏时应使用其他工具。
@@ -129,15 +132,15 @@ Android Gradle Plugin 8.7.3
 构建 debug 或 release 变体，APK 输出路径：
 
 ```text
-app/build/outputs/apk/debug/HyperOS3FocusRestore-0.13.4-debug.apk
-app/build/outputs/apk/release/HyperOS3FocusRestore-0.13.4-release.apk
+app/build/outputs/apk/debug/HyperOS3FocusRestore-0.13.6-debug.apk
+app/build/outputs/apk/release/HyperOS3FocusRestore-0.13.6-release.apk
 ```
 
 模块不声明网络、存储、后台服务等额外权限。关于项目按钮通过系统浏览器打开外部链接，网络访问由浏览器处理。
 
 ## 安装和作用域
 
-1. 安装 `HyperOS3FocusRestore-0.13.4-release.apk` 或 `HyperOS3FocusRestore-0.13.4-debug.apk`。
+1. 安装 `HyperOS3FocusRestore-0.13.6-release.apk` 或 `HyperOS3FocusRestore-0.13.6-debug.apk`。
 2. 在 LSPosed 中启用本模块。
 3. 作用域应只有：
 

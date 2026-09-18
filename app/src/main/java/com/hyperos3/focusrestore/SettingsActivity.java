@@ -92,11 +92,12 @@ public final class SettingsActivity extends Activity {
     private Switch disableIslandFeatureCacheSwitch;
     private Switch allowFocusClickSwitch;
     private Switch hideNotificationIconsSwitch;
+    private Switch showFocusDividerSwitch;
     private EditText generalSeparatorInput;
     private EditText sideSeparatorInput;
     private boolean pendingManual, pendingCompatRetry, pendingMarqueeBounce, pendingIslandCompat,
             pendingDisableIslandProperty, pendingDisableIslandFeatureCache, pendingAllowFocusClick,
-            pendingHideNotificationIcons;
+            pendingHideNotificationIcons, pendingShowFocusDivider;
     private int pendingHookMode, pendingWidthDp, pendingDelayMs;
     private String pendingGeneralSeparator, pendingSideSeparator;
     private Set<String> pendingForcePackages = new HashSet<>();
@@ -299,16 +300,21 @@ public final class SettingsActivity extends Activity {
 
          }
          allowFocusClickSwitch = new Switch(this);
-        allowFocusClickSwitch.setText("允许焦点通知点击");
+        allowFocusClickSwitch.setText("调试：允许焦点通知点击");
         styleSwitch(allowFocusClickSwitch);
 
         hideNotificationIconsSwitch = new Switch(this);
-        hideNotificationIconsSwitch.setText("显示焦点通知时隐藏其他通知图标");
+        hideNotificationIconsSwitch.setText("焦点通知隐藏其他图标（HyperOS 4）");
         styleSwitch(hideNotificationIconsSwitch);
+
+        showFocusDividerSwitch = new Switch(this);
+        showFocusDividerSwitch.setText("显示焦点通知分隔竖线（HyperOS 4）");
+        styleSwitch(showFocusDividerSwitch);
         compatPanel.addView(marqueeBounceSwitch, matchWrap(dp(8)));
         compatPanel.addView(islandCompatSwitch, matchWrap(dp(8)));
         compatPanel.addView(compatRetrySwitch, matchWrap(dp(8)));
         compatPanel.addView(hideNotificationIconsSwitch, matchWrap(dp(8)));
+        compatPanel.addView(showFocusDividerSwitch, matchWrap(dp(8)));
         compatPanel.addView(allowFocusClickSwitch,
                 matchWrap(com.hyperos3.focusrestore.BuildConfig.DEBUG ? dp(8) : 0));
         if (com.hyperos3.focusrestore.BuildConfig.DEBUG) {
@@ -328,7 +334,10 @@ public final class SettingsActivity extends Activity {
         TextView iconNotice = text("• 通知图标：默认在显示焦点通知时隐藏其他通知图标，焦点通知消失后恢复；右侧信号、电池等系统图标不受影响。", 13, COLOR_TEXT_SECONDARY);
         iconNotice.setPadding(dp(12), 0, dp(12), dp(4));
         root.addView(iconNotice, matchWrap(0));
-        TextView clickWarning = text("• 点击风险：HyperOS 3 上基本所有焦点通知都不支持点击。点击可能导致焦点通知消失或不可见，相关系统逻辑也可能无法正常处理。默认关闭点击；只有确认接受风险后才建议开启。", 13, COLOR_TEXT_SECONDARY);
+        TextView dividerNotice = text("• 分隔竖线：HyperOS 4 默认在时间与焦点内容之间显示竖线，并跟随状态栏时间实时反色。", 13, COLOR_TEXT_SECONDARY);
+        dividerNotice.setPadding(dp(12), 0, dp(12), dp(4));
+        root.addView(dividerNotice, matchWrap(0));
+        TextView clickWarning = text("• 调试点击（不可靠）：该选项仅用于调试，默认关闭，不保证任何通知可正常点击。HyperOS 3 上基本所有焦点通知都不支持点击；HyperOS 4 的 RemoteViews 或 contentIntent 也可能无效。开启后可能导致焦点通知消失、不可见、误触发，或使系统通知逻辑无法正常处理。", 13, COLOR_TEXT_SECONDARY);
         clickWarning.setPadding(dp(12), dp(4), dp(12), dp(8));
         root.addView(clickWarning, matchWrap(dp(8)));
         TextView islandNotice = text("• 超级岛屏蔽：模块始终尝试关闭 HyperOS 超级岛显示路径，避免其占用状态栏区域。\n• 内容转换：上方开关只控制是否读取协议内容并转换为 Focus，不控制超级岛屏蔽开关。\n• 灵动舞台：本模块不负责隐藏 MIUIStrongToast（灵动舞台）；如有需要，请使用其他专用工具。修改后请点击顶部保存，并重启 SystemUI 或设备生效。", 13, COLOR_TEXT_SECONDARY);
@@ -350,6 +359,8 @@ public final class SettingsActivity extends Activity {
         }
         allowFocusClickSwitch.setChecked(pendingAllowFocusClick);
         hideNotificationIconsSwitch.setChecked(pendingHideNotificationIcons);
+        showFocusDividerSwitch.setChecked(pendingShowFocusDivider);
+        updateModeSpecificControls();
         installSettingsListeners();
     }
 
@@ -422,6 +433,10 @@ public final class SettingsActivity extends Activity {
         allowFocusClickSwitch.setOnCheckedChangeListener((b, c) -> { pendingAllowFocusClick = c; markPending(); });
         hideNotificationIconsSwitch.setOnCheckedChangeListener((b, c) -> {
             pendingHideNotificationIcons = c;
+            markPending();
+        });
+        showFocusDividerSwitch.setOnCheckedChangeListener((b, c) -> {
+            pendingShowFocusDivider = c;
             markPending();
         });
     }
@@ -702,6 +717,7 @@ public final class SettingsActivity extends Activity {
         pendingDisableIslandFeatureCache = settings.disableIslandFeatureCache;
         pendingAllowFocusClick = settings.allowFocusClick;
         pendingHideNotificationIcons = settings.hideNotificationIcons;
+        pendingShowFocusDivider = settings.showFocusDivider;
         pendingGeneralSeparator = settings.islandGeneralSeparator;
         pendingSideSeparator = settings.islandSideSeparator;
         pendingForcePackages = new HashSet<>(settings.islandForcePackages);
@@ -719,8 +735,8 @@ public final class SettingsActivity extends Activity {
                 pendingWidthDp, pendingDelayMs,
                 pendingCompatRetry, pendingMarqueeBounce, pendingIslandCompat, pendingDisableIslandProperty,
                 pendingDisableIslandFeatureCache, pendingAllowFocusClick,
-                pendingHideNotificationIcons, pendingGeneralSeparator,
-                pendingSideSeparator, pendingForcePackages);
+                pendingHideNotificationIcons, pendingShowFocusDivider,
+                pendingGeneralSeparator, pendingSideSeparator, pendingForcePackages);
         boolean credentialSaved = settings.save(preferences);
         boolean hookSaved = settings.save(FocusRestoreSettings.hookPreferences(this));
         android.util.Log.i(TAG, "settings saved credential=" + credentialSaved
@@ -761,6 +777,19 @@ public final class SettingsActivity extends Activity {
     private void updateModeButtons() {
         styleModeButton(os3ModeButton, pendingHookMode == FocusRestoreSettings.HOOK_MODE_OS3);
         styleModeButton(os4ModeButton, pendingHookMode == FocusRestoreSettings.HOOK_MODE_OS4);
+        updateModeSpecificControls();
+    }
+
+    private void updateModeSpecificControls() {
+        boolean os4 = pendingHookMode == FocusRestoreSettings.HOOK_MODE_OS4;
+        setModeSpecificSwitchEnabled(hideNotificationIconsSwitch, os4);
+        setModeSpecificSwitchEnabled(showFocusDividerSwitch, os4);
+    }
+
+    private void setModeSpecificSwitchEnabled(Switch control, boolean enabled) {
+        if (control == null) return;
+        control.setEnabled(enabled);
+        control.setAlpha(enabled ? 1f : 0.42f);
     }
 
     private void styleModeButton(Button button, boolean selected) {
