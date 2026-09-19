@@ -1,4 +1,4 @@
-# HyperOS3FocusRestore
+# FocusRestore
 
 用于 HyperOS 3/4 的实验性 LSPosed 模块，尝试恢复 HyperOS 2 的 Focus（焦点通知）状态栏显示路径。
 
@@ -24,7 +24,7 @@ GitHub：<https://github.com/ImKani/HyperOS3FocusRestore>
 
 ## 当前版本
 
-版本：`0.13.8`
+版本：`0.13.9`
 
 本版本新增 HyperOS 4 手动适配，并保留原 HyperOS 3 Hook：
 
@@ -50,7 +50,7 @@ GitHub：<https://github.com/ImKani/HyperOS3FocusRestore>
 模块标识：
 
 ```text
-应用名：HyperOS3FocusRestore
+应用名：FocusRestore
 Application ID：com.hyperos3.focusrestore
 Hook 入口：com.hyperos3.focusrestore.HyperOS3FocusRestoreHook
 日志 Tag：HyperOS3FocusRestore
@@ -133,15 +133,15 @@ Android Gradle Plugin 8.7.3
 构建 debug 或 release 变体，APK 输出路径：
 
 ```text
-app/build/outputs/apk/debug/HyperOS3FocusRestore-0.13.8-debug.apk
-app/build/outputs/apk/release/HyperOS3FocusRestore-0.13.8-release.apk
+app/build/outputs/apk/debug/HyperOS3FocusRestore-0.13.9-debug.apk
+app/build/outputs/apk/release/HyperOS3FocusRestore-0.13.9-release.apk
 ```
 
 模块不声明网络、存储、后台服务等额外权限。关于项目按钮通过系统浏览器打开外部链接，网络访问由浏览器处理。
 
 ## 安装和作用域
 
-1. 安装 `HyperOS3FocusRestore-0.13.8-release.apk` 或 `HyperOS3FocusRestore-0.13.8-debug.apk`。
+1. 安装 `HyperOS3FocusRestore-0.13.9-release.apk` 或 `HyperOS3FocusRestore-0.13.9-debug.apk`。
 2. 在 LSPosed 中启用本模块。
 3. 作用域应只有：
 
@@ -155,7 +155,7 @@ com.android.systemui
 6. 重启设备，确保 SystemUI 的静态功能字段和手动选择的 Hook 在启动阶段初始化。
 7. 触发以前会显示超级岛或焦点通知的通知。
 
-这是全新 Application ID，旧版模块不会自动升级。测试时请禁用旧模块，避免两个模块同时 Hook SystemUI。
+这是现有 Application ID 的显示品牌更新，旧版可通过相同包名、签名和更高版本号覆盖升级。测试时请禁用旧模块，避免两个模块同时 Hook SystemUI。
 
 ## 抓取日志
 

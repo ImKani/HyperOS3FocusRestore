@@ -70,13 +70,21 @@ public final class SettingsActivity extends Activity {
     private Button[] navButtons;
     private int currentPage;
 
-    private static final int COLOR_PRIMARY = Color.rgb(26, 115, 232);
-    private static final int COLOR_PRIMARY_LIGHT = Color.rgb(232, 240, 254);
-    private static final int COLOR_BACKGROUND = Color.rgb(248, 249, 250);
-    private static final int COLOR_TEXT_PRIMARY = Color.rgb(32, 33, 36);
-    private static final int COLOR_TEXT_SECONDARY = Color.rgb(95, 99, 104);
-    private static final int COLOR_DIVIDER = Color.rgb(218, 220, 224);
-    private static final int COLOR_INPUT_BACKGROUND = Color.rgb(242, 244, 247);
+    private static final int COLOR_PRIMARY = 0xFF3E5F7A;
+    private static final int COLOR_PRIMARY_LIGHT = 0xFFC7DCEB;
+    private static final int COLOR_BACKGROUND = 0xFFF2F5F8;
+    private static final int COLOR_TEXT_PRIMARY = 0xFF191C1E;
+    private static final int COLOR_TEXT_SECONDARY = 0xFF42474B;
+    private static final int COLOR_DIVIDER = 0xFFC2C7CB;
+    private static final int COLOR_INPUT_BACKGROUND = 0xFFE2E8ED;
+    private static final int COLOR_SURFACE = 0xFFF7FAFC;
+    private static final int COLOR_SURFACE_HIGH = 0xFFE9EEF2;
+    private static final int COLOR_ERROR = 0xFFBA1A1A;
+    private boolean dirty;
+    private String saveMessage;
+    private Dialog activeDialog;
+    private ScrollView pageScroll;
+    private final int[] scrollPositions = new int[3];
 
     private Button os3ModeButton;
     private Button os4ModeButton;
@@ -128,54 +136,56 @@ public final class SettingsActivity extends Activity {
         }
         setContentView(createContent());
         loadSettings();
-        showPage(0);
+        if (savedInstanceState != null) restorePendingState(savedInstanceState);
+        showPage(currentPage);
     }
 
     private View createContent() {
         LinearLayout outer = new LinearLayout(this);
         outer.setOrientation(LinearLayout.VERTICAL);
         outer.setBackgroundColor(COLOR_BACKGROUND);
+        if (Build.VERSION.SDK_INT >= 29) outer.setForceDarkAllowed(false);
         applyRootInsets(outer);
         View topBar = createTopBar();
-        outer.addView(topBar, new LinearLayout.LayoutParams(-1, dp(64)));
+        outer.addView(topBar, new LinearLayout.LayoutParams(-1, -2));
         pageContainer = new LinearLayout(this);
         pageContainer.setOrientation(LinearLayout.VERTICAL);
         outer.addView(pageContainer, new LinearLayout.LayoutParams(-1, 0, 1f));
         bottomNav = (LinearLayout) createBottomNavigation();
-        outer.addView(bottomNav, new LinearLayout.LayoutParams(-1, dp(64)));
+        outer.addView(bottomNav, new LinearLayout.LayoutParams(-1, -2));
         return outer;
     }
 
     private View createTopBar() {
         LinearLayout bar = new LinearLayout(this);
         bar.setGravity(Gravity.CENTER_VERTICAL);
-        bar.setPadding(dp(16), 0, dp(8), 0);
-        bar.setBackgroundColor(Color.WHITE);
+        bar.setMinimumHeight(dp(64));
+        bar.setPadding(dp(16), dp(8), dp(12), dp(8));
+        bar.setBackgroundColor(COLOR_SURFACE);
         if (Build.VERSION.SDK_INT >= 21) bar.setElevation(dp(2));
         ImageView icon = new ImageView(this);
         Drawable appIcon = getApplicationInfo().loadIcon(getPackageManager());
         icon.setImageDrawable(appIcon);
         bar.addView(icon, new LinearLayout.LayoutParams(dp(36), dp(36)));
-        TextView brand = text("焦点通知", 18, Color.rgb(28, 28, 30));
+        TextView brand = text("FocusRestore", 22, COLOR_TEXT_PRIMARY);
         brand.setTypeface(brand.getTypeface(), 1);
         LinearLayout.LayoutParams brandParams = new LinearLayout.LayoutParams(0, -2, 1f);
         brandParams.leftMargin = dp(10);
         bar.addView(brand, brandParams);
-        pageTitle = text("设置", 16, Color.rgb(60, 64, 67));
+        pageTitle = text("设置", 12, COLOR_TEXT_SECONDARY);
         pageTitle.setGravity(Gravity.CENTER);
         bar.addView(pageTitle, new LinearLayout.LayoutParams(0, -1, 1f));
         saveButton = new Button(this);
         saveButton.setText("保存");
         saveButton.setTextSize(14);
         saveButton.setTextColor(Color.WHITE);
-        saveButton.setBackground(roundedBg(COLOR_PRIMARY, 10));
-        saveButton.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_save_floppy, 0, 0, 0);
-        saveButton.setCompoundDrawablePadding(dp(4));
+        saveButton.setBackground(roundedBg(COLOR_PRIMARY, 28));
         saveButton.setAllCaps(false);
-        saveButton.setMinWidth(dp(68));
-        saveButton.setPadding(dp(8), 0, dp(8), 0);
+        saveButton.setMinWidth(dp(72));
+        saveButton.setMinHeight(dp(48));
+        saveButton.setPadding(dp(16), 0, dp(16), 0);
         saveButton.setOnClickListener(v -> saveSettings());
-        LinearLayout.LayoutParams saveParams = new LinearLayout.LayoutParams(dp(76), dp(48));
+        LinearLayout.LayoutParams saveParams = new LinearLayout.LayoutParams(-2, -2);
         saveParams.gravity = Gravity.CENTER_VERTICAL;
         bar.addView(saveButton, saveParams);
         return bar;
@@ -183,8 +193,9 @@ public final class SettingsActivity extends Activity {
 
     private View createBottomNavigation() {
         LinearLayout nav = new LinearLayout(this);
+        nav.setMinimumHeight(dp(80));
         nav.setGravity(Gravity.CENTER);
-        nav.setBackgroundColor(COLOR_BACKGROUND);
+        nav.setBackgroundColor(COLOR_SURFACE_HIGH);
         nav.setPadding(dp(8), dp(4), dp(8), dp(4));
         String[] names = {"设置", "自定义", "关于"};
         navButtons = new Button[names.length];
@@ -194,11 +205,11 @@ public final class SettingsActivity extends Activity {
             item.setText(names[i]);
             item.setTextSize(14);
             item.setAllCaps(false);
-            item.setMinHeight(0);
+            item.setMinHeight(dp(48));
             item.setPadding(dp(8), 0, dp(8), 0);
             item.setOnClickListener(v -> showPage(page));
             navButtons[i] = item;
-            LinearLayout.LayoutParams itemParams = new LinearLayout.LayoutParams(0, dp(48), 1f);
+            LinearLayout.LayoutParams itemParams = new LinearLayout.LayoutParams(0, -2, 1f);
             itemParams.gravity = Gravity.CENTER_VERTICAL;
             nav.addView(item, itemParams);
         }
@@ -207,28 +218,32 @@ public final class SettingsActivity extends Activity {
 
     private void showPage(int page) {
         captureCurrentInputs();
+        if (pageScroll != null) scrollPositions[currentPage] = pageScroll.getScrollY();
         currentPage = page;
         pageContainer.removeAllViews();
         pageTitle.setText(page == 0 ? "设置" : page == 1 ? "自定义" : "关于");
         saveButton.setVisibility(page == 2 ? View.GONE : View.VISIBLE);
         updateNavButtons(page);
         ScrollView scroll = new ScrollView(this);
+        pageScroll = scroll;
         scroll.setFillViewport(true);
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(dp(20), dp(16), dp(20), dp(24));
+        content.setPadding(dp(16), dp(12), dp(16), dp(24));
         if (page == 0) buildSettingsPage(content);
         else if (page == 1) buildCustomPage(content);
         else buildAboutPage(content);
         scroll.addView(content);
         pageContainer.addView(scroll, new LinearLayout.LayoutParams(-1, -1));
+        renderPendingStatus();
+        scroll.post(() -> scroll.scrollTo(0, scrollPositions[page]));
     }
 
     private LinearLayout panel() {
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setPadding(dp(16), dp(10), dp(16), dp(10));
-        panel.setBackground(roundedBg(Color.WHITE, 10));
+        panel.setPadding(dp(16), dp(16), dp(16), dp(16));
+        panel.setBackground(roundedBg(COLOR_SURFACE, 12));
         return panel;
     }
 
@@ -394,7 +409,7 @@ public final class SettingsActivity extends Activity {
     }
 
     private void buildAboutPage(LinearLayout root) {
-        TextView about = text("焦点通知\n\n用于 HyperOS 3/4 的实验性 LSPosed 模块，尝试恢复 HyperOS 2 的 Focus（焦点通知）状态栏显示路径。\n\n本模块由 AI 辅助反编译分析与编写，代码通过 LSPosed Hook 介入系统界面，存在 ROM 版本差异、系统崩溃、状态栏显示异常、功能失效、数据丢失或其他不可控风险。使用前请自行备份，并自行承担使用风险。模块不保证适用于所有设备、系统版本或第三方通知。\n\n\n作者：ImKani\n酷安主页：https://www.coolapk.com/u/1205658\nGitHub：https://github.com/ImKani/HyperOS3FocusRestore\n\n许可证：GNU General Public License v3.0 only（GPL-3.0-only）", 15, COLOR_TEXT_PRIMARY);
+        TextView about = text("FocusRestore\n\nFocusRestore 是用于 HyperOS 3/4 的实验性 LSPosed 模块，尝试恢复 HyperOS 2 的 Focus（焦点通知）状态栏显示路径。\n\n本模块由 AI 辅助反编译分析与编写，代码通过 LSPosed Hook 介入系统界面，存在 ROM 版本差异、系统崩溃、状态栏显示异常、功能失效、数据丢失或其他不可控风险。使用前请自行备份，并自行承担使用风险。模块不保证适用于所有设备、系统版本或第三方通知。\n\n\n作者：ImKani\n酷安主页：https://www.coolapk.com/u/1205658\nGitHub：https://github.com/ImKani/HyperOS3FocusRestore\n\n许可证：GNU General Public License v3.0 only（GPL-3.0-only）", 15, COLOR_TEXT_PRIMARY);
         root.addView(about, matchWrap(dp(18)));
         Button github = new Button(this);
         github.setText("打开 GitHub");
@@ -405,6 +420,61 @@ public final class SettingsActivity extends Activity {
         github.setPadding(dp(16), 0, dp(16), 0);
         github.setOnClickListener(v -> openExternalLink("https://github.com/ImKani/HyperOS3FocusRestore"));
         root.addView(github, matchWrap(dp(12)));
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        captureCurrentInputs();
+        if (pageScroll != null) scrollPositions[currentPage] = pageScroll.getScrollY();
+        outState.putInt("m3.page", currentPage);
+        outState.putBoolean("m3.dirty", dirty);
+        outState.putString("m3.saveMessage", saveMessage);
+        outState.putInt("m3.mode", pendingHookMode);
+        outState.putBoolean("m3.manual", pendingManual);
+        outState.putInt("m3.width", pendingWidthDp);
+        outState.putInt("m3.delay", pendingDelayMs);
+        outState.putBoolean("m3.retry", pendingCompatRetry);
+        outState.putBoolean("m3.bounce", pendingMarqueeBounce);
+        outState.putBoolean("m3.island", pendingIslandCompat);
+        outState.putBoolean("m3.property", pendingDisableIslandProperty);
+        outState.putBoolean("m3.cache", pendingDisableIslandFeatureCache);
+        outState.putBoolean("m3.click", pendingAllowFocusClick);
+        outState.putBoolean("m3.hide", pendingHideNotificationIcons);
+        outState.putBoolean("m3.divider", pendingShowFocusDivider);
+        outState.putString("m3.general", pendingGeneralSeparator);
+        outState.putString("m3.side", pendingSideSeparator);
+        outState.putStringArrayList("m3.packages", new ArrayList<>(pendingForcePackages));
+        super.onSaveInstanceState(outState);
+    }
+
+    private void restorePendingState(Bundle state) {
+        currentPage = state.getInt("m3.page", 0);
+        dirty = state.getBoolean("m3.dirty", false);
+        saveMessage = state.getString("m3.saveMessage");
+        pendingHookMode = state.getInt("m3.mode", pendingHookMode);
+        pendingManual = state.getBoolean("m3.manual", pendingManual);
+        pendingWidthDp = state.getInt("m3.width", pendingWidthDp);
+        pendingDelayMs = state.getInt("m3.delay", pendingDelayMs);
+        pendingCompatRetry = state.getBoolean("m3.retry", pendingCompatRetry);
+        pendingMarqueeBounce = state.getBoolean("m3.bounce", pendingMarqueeBounce);
+        pendingIslandCompat = state.getBoolean("m3.island", pendingIslandCompat);
+        pendingDisableIslandProperty = state.getBoolean("m3.property", pendingDisableIslandProperty);
+        pendingDisableIslandFeatureCache = state.getBoolean("m3.cache", pendingDisableIslandFeatureCache);
+        pendingAllowFocusClick = state.getBoolean("m3.click", pendingAllowFocusClick);
+        pendingHideNotificationIcons = state.getBoolean("m3.hide", pendingHideNotificationIcons);
+        pendingShowFocusDivider = state.getBoolean("m3.divider", pendingShowFocusDivider);
+        pendingGeneralSeparator = state.getString("m3.general", pendingGeneralSeparator);
+        pendingSideSeparator = state.getString("m3.side", pendingSideSeparator);
+        ArrayList<String> packages = state.getStringArrayList("m3.packages");
+        if (packages != null) pendingForcePackages = new HashSet<>(packages);
+    }
+
+    private void renderPendingStatus() {
+        if (statusHint == null) return;
+        statusHint.setText(dirty ? "有未保存的修改，请点击顶部“保存”。"
+                : (saveMessage == null ? "修改后点击顶部保存，再重启 SystemUI 或设备生效。" : saveMessage));
+        statusHint.setTextColor(dirty ? COLOR_PRIMARY
+                : (saveMessage != null && saveMessage.contains("失败") ? COLOR_ERROR : COLOR_TEXT_SECONDARY));
     }
 
     private void installSettingsListeners() {
@@ -482,7 +552,8 @@ public final class SettingsActivity extends Activity {
     private View createWhitelistDialogView(final Dialog dialog) {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackground(roundedBg(Color.WHITE, 10));
+        root.setBackground(roundedBg(COLOR_SURFACE_HIGH, 28));
+        if (Build.VERSION.SDK_INT >= 29) root.setForceDarkAllowed(false);
         root.setPadding(dp(16), dp(16), dp(16), dp(8));
         TextView title = text("强制转换超级岛应用", 18, COLOR_TEXT_PRIMARY);
         title.setTypeface(title.getTypeface(), 1);
@@ -490,7 +561,8 @@ public final class SettingsActivity extends Activity {
 
         dialogSearchInput = input("刷新后搜索应用名称或包名");
         dialogSearchInput.setTextSize(14);
-        dialogSearchInput.setMinHeight(dp(48));
+        dialogSearchInput.setMinHeight(dp(56));
+        dialogSearchInput.setContentDescription("搜索应用名称或包名");
         dialogSearchInput.addTextChangedListener(new TextWatcher() {
             public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
             public void onTextChanged(CharSequence s, int start, int before, int count) { filterDialogApps(); }
@@ -510,10 +582,10 @@ public final class SettingsActivity extends Activity {
         refresh.setText("刷新");
         refresh.setAllCaps(false);
         refresh.setTextColor(COLOR_PRIMARY);
-        refresh.setBackground(roundedBg(COLOR_PRIMARY_LIGHT, 10));
-        refresh.setMinHeight(dp(40));
+        refresh.setBackground(roundedBg(COLOR_PRIMARY_LIGHT, 28));
+        refresh.setMinHeight(dp(48));
         refresh.setOnClickListener(v -> loadDialogApps());
-        options.addView(refresh, new LinearLayout.LayoutParams(dp(72), dp(44)));
+        options.addView(refresh, new LinearLayout.LayoutParams(-2, -2));
         root.addView(options, matchWrap(dp(4)));
 
         dialogListView = new ListView(this);
@@ -541,7 +613,7 @@ public final class SettingsActivity extends Activity {
         buttons.addView(cancel, new LinearLayout.LayoutParams(dp(76), dp(48)));
         Button done = new Button(this);
         done.setText("完成"); done.setAllCaps(false); done.setTextColor(Color.WHITE);
-        done.setBackground(roundedBg(COLOR_PRIMARY, 12));
+        done.setBackground(roundedBg(COLOR_PRIMARY, 28));
         done.setOnClickListener(v -> { pendingForcePackages = new HashSet<>(dialogSelectedPackages); updateForcePackagesButton(); markPending(); dialog.dismiss(); });
         buttons.addView(done, new LinearLayout.LayoutParams(dp(76), dp(48)));
         root.addView(buttons, matchWrap(0));
@@ -699,8 +771,17 @@ public final class SettingsActivity extends Activity {
         e.setTextColor(COLOR_TEXT_PRIMARY);
         e.setHintTextColor(COLOR_TEXT_SECONDARY);
         e.setPadding(dp(14), 0, dp(14), 0);
-        e.setBackground(roundedBg(COLOR_INPUT_BACKGROUND, 10));
-        e.setOnFocusChangeListener((v, focus) -> { if (!focus) markPending(); });
+        e.setBackground(inputBackground());
+        e.addTextChangedListener(new TextWatcher() {
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                boolean settingInput = e == generalSeparatorInput || e == sideSeparatorInput;
+                if (e == generalSeparatorInput) pendingGeneralSeparator = s.toString();
+                if (e == sideSeparatorInput) pendingSideSeparator = s.toString();
+                if (settingInput && e.hasFocus()) markPending();
+            }
+            public void afterTextChanged(Editable s) { }
+        });
         return e;
     }
 
@@ -741,20 +822,54 @@ public final class SettingsActivity extends Activity {
         boolean hookSaved = settings.save(FocusRestoreSettings.hookPreferences(this));
         android.util.Log.i(TAG, "settings saved credential=" + credentialSaved
                 + " deviceProtected=" + hookSaved + " " + settings.describe());
-        if (statusHint != null) {
-            statusHint.setText(credentialSaved && hookSaved
-                    ? "设置已保存。请重启 SystemUI 或设备后生效。"
-                    : "设置保存失败，请重试并检查存储状态。");
+        if (credentialSaved && hookSaved) {
+            dirty = false;
+            saveMessage = "设置已保存。请重启 SystemUI 或设备后生效。";
+        } else {
+            dirty = true;
+            saveMessage = "设置保存失败，请重试并检查存储状态。";
         }
+        renderPendingStatus();
     }
 
-    private void markPending() { if (statusHint != null) statusHint.setText("有未保存的修改，请点击顶部“保存”。"); }
-    private LinearLayout valueRow(String label, String value) { LinearLayout row = new LinearLayout(this); row.setGravity(Gravity.CENTER_VERTICAL); row.addView(text(label, 15, Color.rgb(60,64,67)), new LinearLayout.LayoutParams(0, -2, 1f)); TextView val = text(value, 15, Color.rgb(26,115,232)); val.setTypeface(val.getTypeface(), 1); row.addView(val); return row; }
-    private LinearLayout rangeRow(String left, String right) { LinearLayout row = new LinearLayout(this); row.addView(text(left, 12, Color.GRAY), new LinearLayout.LayoutParams(0, -2, 1f)); TextView r = text(right, 12, Color.GRAY); r.setGravity(Gravity.END); row.addView(r, new LinearLayout.LayoutParams(0, -2, 1f)); return row; }
+    private void markPending() {
+        dirty = true;
+        saveMessage = null;
+        renderPendingStatus();
+    }
+
+    private LinearLayout valueRow(String label, String value) {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.addView(text(label, 15, COLOR_TEXT_PRIMARY),
+                new LinearLayout.LayoutParams(0, -2, 1f));
+        TextView val = text(value, 15, COLOR_PRIMARY);
+        val.setTypeface(val.getTypeface(), 1);
+        row.addView(val);
+        return row;
+    }
+
+    private LinearLayout rangeRow(String left, String right) {
+        LinearLayout row = new LinearLayout(this);
+        row.addView(text(left, 12, COLOR_TEXT_SECONDARY),
+                new LinearLayout.LayoutParams(0, -2, 1f));
+        TextView r = text(right, 12, COLOR_TEXT_SECONDARY);
+        r.setGravity(Gravity.END);
+        row.addView(r, new LinearLayout.LayoutParams(0, -2, 1f));
+        return row;
+    }
     private Drawable roundedBg(int color, float radiusDp) {
         GradientDrawable drawable = new GradientDrawable();
         drawable.setColor(color);
         drawable.setCornerRadius(dp((int) radiusDp));
+        return drawable;
+    }
+
+    private Drawable inputBackground() {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setColor(COLOR_INPUT_BACKGROUND);
+        drawable.setCornerRadius(dp(4));
+        drawable.setStroke(dp(1), COLOR_DIVIDER);
         return drawable;
     }
 
@@ -763,7 +878,8 @@ public final class SettingsActivity extends Activity {
         button.setText(label);
         button.setTextSize(14);
         button.setAllCaps(false);
-        button.setMinHeight(0);
+        button.setMinHeight(dp(48));
+        button.setMinWidth(dp(48));
         button.setPadding(dp(8), 0, dp(8), 0);
         button.setOnClickListener(v -> {
             if (pendingHookMode == mode) return;
@@ -794,8 +910,10 @@ public final class SettingsActivity extends Activity {
 
     private void styleModeButton(Button button, boolean selected) {
         if (button == null) return;
-        button.setTextColor(selected ? Color.WHITE : COLOR_TEXT_SECONDARY);
-        button.setBackground(roundedBg(selected ? COLOR_PRIMARY : COLOR_INPUT_BACKGROUND, 8));
+        button.setSelected(selected);
+        button.setContentDescription(button.getText() + (selected ? "，已选择" : "，未选择"));
+        button.setTextColor(selected ? 0xFF041E2F : COLOR_TEXT_SECONDARY);
+        button.setBackground(roundedBg(selected ? COLOR_PRIMARY_LIGHT : COLOR_SURFACE, 28));
     }
 
     private void updateNavButtons(int selected) {
@@ -803,8 +921,9 @@ public final class SettingsActivity extends Activity {
         for (int i = 0; i < navButtons.length; i++) {
             Button button = navButtons[i];
             boolean active = i == selected;
-            button.setBackground(active ? roundedBg(COLOR_PRIMARY_LIGHT, 10) : roundedBg(Color.TRANSPARENT, 14));
-            button.setTextColor(active ? COLOR_PRIMARY : COLOR_TEXT_SECONDARY);
+            button.setSelected(active);
+            button.setBackground(roundedBg(active ? COLOR_PRIMARY_LIGHT : COLOR_SURFACE_HIGH, 28));
+            button.setTextColor(active ? 0xFF041E2F : COLOR_TEXT_SECONDARY);
         }
     }
 
@@ -859,7 +978,7 @@ public final class SettingsActivity extends Activity {
     private void styleSwitch(Switch s) { if (Build.VERSION.SDK_INT >= 21) { int[][] states = {new int[]{android.R.attr.state_checked}, new int[]{}}; s.setThumbTintList(new ColorStateList(states, new int[]{Color.WHITE, Color.rgb(189,193,198)})); s.setTrackTintList(new ColorStateList(states, new int[]{COLOR_PRIMARY, Color.rgb(218,220,224)})); } }
     private void styleSeekBar(SeekBar s) { if (Build.VERSION.SDK_INT >= 21) { s.setProgressTintList(ColorStateList.valueOf(COLOR_PRIMARY)); s.setThumbTintList(ColorStateList.valueOf(COLOR_PRIMARY)); } }
     private void openExternalLink(String url) { try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); } catch (ActivityNotFoundException e) { if (statusHint != null) statusHint.setText("设备没有可用的浏览器，无法打开链接。"); } }
-    private void configureLightSystemBars(Window w) { w.setStatusBarColor(Color.rgb(248,249,250)); w.setNavigationBarColor(Color.rgb(248,249,250)); if (Build.VERSION.SDK_INT >= 23) { int f = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR; if (Build.VERSION.SDK_INT >= 26) f |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR; w.getDecorView().setSystemUiVisibility(f); } }
+    private void configureLightSystemBars(Window w) { w.setStatusBarColor(COLOR_BACKGROUND); w.setNavigationBarColor(COLOR_BACKGROUND); if (Build.VERSION.SDK_INT >= 23) { int f = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR; if (Build.VERSION.SDK_INT >= 26) f |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR; w.getDecorView().setSystemUiVisibility(f); } }
     private TextView text(String value, int size, int color) { TextView v = new TextView(this); v.setText(value); v.setTextSize(size); v.setTextColor(color); return v; }
     private LinearLayout.LayoutParams matchWrap(int margin) { LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, -2); p.bottomMargin = margin; return p; }
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }

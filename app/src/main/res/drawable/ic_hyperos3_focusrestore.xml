@@ -1,14 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="48dp"
     android:height="48dp"
-    android:viewportWidth="1024"
-    android:viewportHeight="1024">
-    <path
-        android:fillColor="@android:color/transparent"
-        android:strokeColor="@color/ic_launcher_foreground_color"
-        android:strokeWidth="58"
-        android:pathData="M512,352A160,160 0,1 1,512 672A160,160 0,1 1,512 352" />
-    <path
-        android:fillColor="@color/ic_launcher_foreground_color"
-        android:pathData="M512,436A76,76 0,1 1,512 588A76,76 0,1 1,512 436" />
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:fillColor="@android:color/transparent" android:strokeColor="@color/ic_launcher_foreground_color" android:strokeWidth="5.9" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M48.1,33.8 H39.6 A5.8,5.8 0 0 0 33.8,39.6 V48.1" />
+    <path android:fillColor="@android:color/transparent" android:strokeColor="@color/ic_launcher_foreground_color" android:strokeWidth="5.9" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M59.9,33.8 H68.4 A5.8,5.8 0 0 1 74.2,39.6 V48.1" />
+    <path android:fillColor="@android:color/transparent" android:strokeColor="@color/ic_launcher_foreground_color" android:strokeWidth="5.9" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M74.2,59.9 V68.4 A5.8,5.8 0 0 1 68.4,74.2 H59.9" />
+    <path android:fillColor="@android:color/transparent" android:strokeColor="@color/ic_launcher_foreground_color" android:strokeWidth="5.9" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M48.1,74.2 H39.6 A5.8,5.8 0 0 1 33.8,68.4 V59.9" />
+    <path android:fillColor="@color/ic_launcher_foreground_color" android:pathData="M54,47.2 A6.8,6.8 0 1 1 54,60.8 A6.8,6.8 0 1 1 54,47.2 Z" />
 </vector>
