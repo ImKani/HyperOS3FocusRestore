@@ -7,7 +7,10 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
 import android.content.pm.ApplicationInfo;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.ColorDrawable;
@@ -222,19 +225,20 @@ public final class SettingsActivity extends Activity {
         for (int i = 0; i < names.length; i++) {
             final int page = i;
             Button item = new Button(this);
-            item.setText(names[i]);
-            item.setTextSize(14);
-            item.setAllCaps(false);
-            item.setMinHeight(dp(48));
-            item.setMinWidth(dp(48));
-            item.setPadding(dp(8), 0, dp(8), 0);
-            item.setBackground(roundedBg(COLOR_SURFACE_HIGH, 12));
+            item.setText("");
+            item.setContentDescription(names[i]);
+            item.setMinHeight(dp(40));
+            item.setMinWidth(dp(64));
+            item.setPadding(0, 0, 0, 0);
+            item.setGravity(Gravity.CENTER);
+            item.setBackground(new NavigationButtonDrawable(page == 0, false));
+            item.setCompoundDrawablesWithIntrinsicBounds(new NavigationIconDrawable(page == 0, false), null, null, null);
             flattenButton(item);
             item.setOnClickListener(v -> showPage(page));
             navButtons[i] = item;
-            LinearLayout.LayoutParams itemParams = new LinearLayout.LayoutParams(0, -2, 1f);
+            LinearLayout.LayoutParams itemParams = new LinearLayout.LayoutParams(dp(64), dp(40));
             itemParams.gravity = Gravity.CENTER_VERTICAL;
-            itemParams.setMargins(dp(4), dp(4), dp(4), dp(4));
+            itemParams.setMargins(dp(6), dp(4), dp(6), dp(4));
             nav.addView(item, itemParams);
         }
         return nav;
@@ -929,6 +933,65 @@ public final class SettingsActivity extends Activity {
         row.addView(r, new LinearLayout.LayoutParams(0, -2, 1f));
         return row;
     }
+    private final class NavigationButtonDrawable extends Drawable {
+        private final boolean active;
+        NavigationButtonDrawable(boolean home, boolean selected) { active = selected; }
+        public void draw(Canvas canvas) {
+            if (!active) return;
+            Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            paint.setColor(COLOR_PRIMARY_LIGHT);
+            canvas.drawRoundRect(getBounds().left, getBounds().top, getBounds().right,
+                    getBounds().bottom, dp(16), dp(16), paint);
+        }
+        public void setAlpha(int alpha) { }
+        public void setColorFilter(android.graphics.ColorFilter filter) { }
+        public int getOpacity() { return android.graphics.PixelFormat.TRANSLUCENT; }
+        public int getIntrinsicWidth() { return dp(24); }
+        public int getIntrinsicHeight() { return dp(24); }
+    }
+
+    private final class NavigationIconDrawable extends Drawable {
+        private final boolean home;
+        private final boolean active;
+        NavigationIconDrawable(boolean isHome, boolean selected) { home = isHome; active = selected; }
+        public void draw(Canvas canvas) {
+            float scale = getBounds().width() / 24f;
+            canvas.save();
+            canvas.translate(getBounds().left, getBounds().top);
+            canvas.scale(scale, scale);
+            Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            paint.setColor(active ? 0xFF101D26 : COLOR_TEXT_SECONDARY);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(home ? 1.8f : 2f);
+            paint.setStrokeCap(Paint.Cap.ROUND);
+            paint.setStrokeJoin(Paint.Join.ROUND);
+            if (home) {
+                Path path = new Path();
+                path.moveTo(2.5f, 11); path.lineTo(12, 2.5f); path.lineTo(21.5f, 11);
+                path.lineTo(21.5f, 12.5f); path.lineTo(19.5f, 12.5f); path.lineTo(19.5f, 21.5f);
+                path.lineTo(14.5f, 21.5f); path.lineTo(14.5f, 15.5f); path.lineTo(9.5f, 15.5f);
+                path.lineTo(9.5f, 21.5f); path.lineTo(4.5f, 21.5f); path.lineTo(4.5f, 12.5f);
+                path.lineTo(2.5f, 12.5f); path.close();
+                if (active) { paint.setStyle(Paint.Style.FILL); canvas.drawPath(path, paint); }
+                else canvas.drawPath(path, paint);
+            } else {
+                for (int i = 0; i < 3; i++) {
+                    float y = 7 + i * 5;
+                    canvas.drawLine(4, y, 20, y, paint);
+                    float x = i == 0 ? 15 : (i == 1 ? 9 : 17);
+                    if (active) { paint.setStyle(Paint.Style.FILL); canvas.drawCircle(x, y, 3, paint); paint.setStyle(Paint.Style.STROKE); }
+                    else canvas.drawCircle(x, y, 2.4f, paint);
+                }
+            }
+            canvas.restore();
+        }
+        public void setAlpha(int alpha) { }
+        public void setColorFilter(android.graphics.ColorFilter filter) { }
+        public int getOpacity() { return android.graphics.PixelFormat.TRANSLUCENT; }
+        public int getIntrinsicWidth() { return dp(24); }
+        public int getIntrinsicHeight() { return dp(24); }
+    }
+
     private Drawable roundedBg(int color, float radiusDp) {
         GradientDrawable drawable = new GradientDrawable();
         drawable.setColor(color);
@@ -1001,9 +1064,10 @@ public final class SettingsActivity extends Activity {
             Button button = navButtons[i];
             boolean active = i == selected;
             button.setSelected(active);
-            button.setBackground(roundedBg(active ? COLOR_PRIMARY_LIGHT : COLOR_SURFACE_HIGH, 12));
+            button.setBackground(new NavigationButtonDrawable(i == 0, active));
+            button.setCompoundDrawablesWithIntrinsicBounds(new NavigationIconDrawable(i == 0, active), null, null, null);
+            button.setContentDescription(i == 0 ? "主页" : "高级");
             flattenButton(button);
-            button.setTextColor(active ? 0xFF041E2F : COLOR_TEXT_SECONDARY);
         }
     }
 
