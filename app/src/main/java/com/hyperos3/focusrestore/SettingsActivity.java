@@ -163,7 +163,7 @@ public final class SettingsActivity extends Activity {
         shell.addView(bottomNav, new LinearLayout.LayoutParams(-1, -2));
 
         saveButton = createSaveButton();
-        FrameLayout.LayoutParams saveParams = new FrameLayout.LayoutParams(dp(62), dp(56),
+        FrameLayout.LayoutParams saveParams = new FrameLayout.LayoutParams(dp(72), dp(56),
                 Gravity.BOTTOM | Gravity.END);
         saveParams.setMargins(0, 0, dp(16), dp(88));
         root.addView(saveButton, saveParams);
@@ -173,12 +173,14 @@ public final class SettingsActivity extends Activity {
     private Button createSaveButton() {
         Button button = new Button(this);
         button.setText("");
-        button.setContentDescription("保存设置");
-        button.setBackgroundResource(R.drawable.save_saved);
+        button.setContentDescription("设置已保存");
+        button.setBackground(roundedBg(COLOR_PRIMARY, 12));
+        button.setCompoundDrawablesWithIntrinsicBounds(R.drawable.save_saved, 0, 0, 0);
         button.setAllCaps(false);
-        button.setMinWidth(dp(62));
+        button.setMinWidth(dp(72));
         button.setMinHeight(dp(56));
         button.setPadding(0, 0, 0, 0);
+        button.setGravity(Gravity.CENTER);
         button.setElevation(dp(6));
         if (Build.VERSION.SDK_INT >= 21) button.setStateListAnimator(null);
         button.setTranslationZ(0f);
@@ -212,10 +214,10 @@ public final class SettingsActivity extends Activity {
 
     private View createBottomNavigation() {
         LinearLayout nav = new LinearLayout(this);
-        nav.setMinimumHeight(dp(80));
+        nav.setMinimumHeight(dp(72));
         nav.setGravity(Gravity.CENTER);
-        nav.setBackgroundColor(COLOR_SURFACE_HIGH);
-        nav.setPadding(dp(8), dp(4), dp(8), dp(4));
+        nav.setBackgroundColor(COLOR_BACKGROUND);
+        nav.setPadding(dp(8), dp(8), dp(8), dp(8));
         String[] names = {"主页", "高级"};
         navButtons = new Button[names.length];
         for (int i = 0; i < names.length; i++) {
@@ -223,17 +225,21 @@ public final class SettingsActivity extends Activity {
             Button item = new Button(this);
             item.setText("");
             item.setContentDescription(names[i]);
-            item.setMinHeight(dp(64));
-            item.setMinWidth(dp(72));
+            item.setMinHeight(dp(48));
+            item.setMinWidth(dp(64));
             item.setPadding(0, 0, 0, 0);
             item.setGravity(Gravity.CENTER);
-            item.setBackgroundResource(page == 0 ? R.drawable.nav_home_off : R.drawable.nav_advanced_off);
+            item.setIncludeFontPadding(false);
+            item.setBackground(roundedBg(Color.TRANSPARENT, 16));
+            item.setCompoundDrawablesWithIntrinsicBounds(
+                    page == 0 ? R.drawable.nav_home_off : R.drawable.nav_advanced_off,
+                    0, 0, 0);
             flattenButton(item);
             item.setOnClickListener(v -> showPage(page));
             navButtons[i] = item;
-            LinearLayout.LayoutParams itemParams = new LinearLayout.LayoutParams(dp(72), dp(64));
+            LinearLayout.LayoutParams itemParams = new LinearLayout.LayoutParams(dp(64), dp(48));
             itemParams.gravity = Gravity.CENTER_VERTICAL;
-            itemParams.setMargins(dp(2), 0, dp(2), 0);
+            itemParams.setMargins(dp(4), 0, dp(4), 0);
             nav.addView(item, itemParams);
         }
         return nav;
@@ -504,7 +510,9 @@ public final class SettingsActivity extends Activity {
         statusHint.setTextColor(dirty ? COLOR_PRIMARY
                 : (saveMessage != null && saveMessage.contains("失败") ? COLOR_ERROR : COLOR_TEXT_SECONDARY));
         if (saveButton != null) {
-            saveButton.setBackgroundResource(dirty ? R.drawable.save_pending : R.drawable.save_saved);
+            saveButton.setCompoundDrawablesWithIntrinsicBounds(
+                    dirty ? R.drawable.save_pending : R.drawable.save_saved,
+                    0, 0, 0);
             saveButton.setContentDescription(dirty ? "保存未保存的设置" : "设置已保存");
         }
     }
@@ -999,11 +1007,13 @@ public final class SettingsActivity extends Activity {
             Button button = navButtons[i];
             boolean active = i == selected;
             button.setSelected(active);
-            int drawable = i == 0
+            int icon = i == 0
                     ? (active ? R.drawable.nav_home_on : R.drawable.nav_home_off)
                     : (active ? R.drawable.nav_advanced_on : R.drawable.nav_advanced_off);
-            button.setBackgroundResource(drawable);
-            button.setContentDescription(i == 0 ? "主页" : "高级");
+            button.setBackground(roundedBg(active ? 0xFFD6E4EE : Color.TRANSPARENT, 16));
+            button.setCompoundDrawablesWithIntrinsicBounds(icon, 0, 0, 0);
+            button.setContentDescription((i == 0 ? "主页" : "高级")
+                    + (active ? "，已选择" : "，未选择"));
             flattenButton(button);
         }
     }
