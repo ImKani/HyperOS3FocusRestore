@@ -24,7 +24,7 @@ GitHub：<https://github.com/ImKani/HyperOS3FocusRestore>
 
 ## 当前版本
 
-版本：`0.13.10`
+版本：`0.13.11`
 
 本版本新增 HyperOS 4 手动适配，并保留原 HyperOS 3 Hook：
 
