@@ -74,7 +74,7 @@ public final class SettingsActivity extends Activity {
     private int currentPage;
 
     private static final int COLOR_PRIMARY = 0xFF3E5F7A;
-    private static final int COLOR_SAVE_PENDING = 0xFF58768D;
+    private static final int COLOR_SAVE_SAVED = 0xFF7891A4;
     private static final int COLOR_PRIMARY_LIGHT = 0xFFC7DCEB;
     private static final int COLOR_BACKGROUND = 0xFFF2F5F8;
     private static final int COLOR_TEXT_PRIMARY = 0xFF191C1E;
@@ -165,7 +165,7 @@ public final class SettingsActivity extends Activity {
         shell.addView(bottomNav, new LinearLayout.LayoutParams(-1, -2));
 
         saveButton = createSaveButton();
-        FrameLayout.LayoutParams saveParams = new FrameLayout.LayoutParams(dp(72), dp(56),
+        FrameLayout.LayoutParams saveParams = new FrameLayout.LayoutParams(dp(64), dp(48),
                 Gravity.BOTTOM | Gravity.END);
         saveParams.setMargins(0, 0, dp(16), dp(88));
         root.addView(saveButton, saveParams);
@@ -175,11 +175,11 @@ public final class SettingsActivity extends Activity {
     private ImageButton createSaveButton() {
         ImageButton button = new ImageButton(this);
         button.setContentDescription("设置已保存");
-        button.setBackground(roundedBg(COLOR_PRIMARY, 12));
+        button.setBackground(roundedBg(COLOR_SAVE_SAVED, 12));
         button.setImageResource(R.drawable.save_saved);
         button.setScaleType(ImageView.ScaleType.CENTER);
-        button.setMinimumWidth(dp(72));
-        button.setMinimumHeight(dp(56));
+        button.setMinimumWidth(dp(64));
+        button.setMinimumHeight(dp(48));
         button.setPadding(0, 0, 0, 0);
         button.setElevation(dp(6));
         if (Build.VERSION.SDK_INT >= 21) button.setStateListAnimator(null);
@@ -224,18 +224,18 @@ public final class SettingsActivity extends Activity {
             final int page = i;
             ImageButton item = new ImageButton(this);
             item.setContentDescription(names[i]);
-            item.setMinimumHeight(dp(40));
-            item.setMinimumWidth(dp(64));
+            item.setMinimumHeight(dp(44));
+            item.setMinimumWidth(dp(68));
             item.setPadding(0, 0, 0, 0);
             item.setScaleType(ImageView.ScaleType.CENTER);
-            item.setBackground(roundedBg(Color.TRANSPARENT, 20));
+            item.setBackground(roundedBg(Color.TRANSPARENT, 22));
             item.setImageResource(page == 0 ? R.drawable.nav_home_off : R.drawable.nav_advanced_off);
             flattenButton(item);
             item.setOnClickListener(v -> showPage(page));
             navButtons[i] = item;
-            LinearLayout.LayoutParams itemParams = new LinearLayout.LayoutParams(dp(64), dp(40));
+            LinearLayout.LayoutParams itemParams = new LinearLayout.LayoutParams(dp(68), dp(44));
             itemParams.gravity = Gravity.CENTER_VERTICAL;
-            itemParams.setMargins(dp(12), 0, dp(12), 0);
+            itemParams.setMargins(dp(18), 0, dp(18), 0);
             nav.addView(item, itemParams);
         }
         return nav;
@@ -506,7 +506,7 @@ public final class SettingsActivity extends Activity {
         statusHint.setTextColor(dirty ? COLOR_PRIMARY
                 : (saveMessage != null && saveMessage.contains("失败") ? COLOR_ERROR : COLOR_TEXT_SECONDARY));
         if (saveButton != null) {
-            saveButton.setBackground(roundedBg(dirty ? COLOR_SAVE_PENDING : COLOR_PRIMARY, 12));
+            saveButton.setBackground(roundedBg(dirty ? COLOR_PRIMARY : COLOR_SAVE_SAVED, 12));
             saveButton.setImageResource(dirty ? R.drawable.save_pending : R.drawable.save_saved);
             saveButton.setContentDescription(dirty ? "保存未保存的设置" : "设置已保存");
         }
@@ -610,7 +610,7 @@ public final class SettingsActivity extends Activity {
         dialogSearchInput = input("搜索应用名称或包名");
         dialogSearchInput.setTextSize(16);
         dialogSearchInput.setContentDescription("搜索应用名称或包名");
-        searchBox.addView(dialogSearchInput, new FrameLayout.LayoutParams(-1, dp(56)));
+        searchBox.addView(dialogSearchInput, new FrameLayout.LayoutParams(-1, dp(48)));
         Button clearSearch = new Button(this);
         clearSearch.setText("×");
         clearSearch.setTextSize(20);
@@ -837,7 +837,7 @@ public final class SettingsActivity extends Activity {
     private EditText input(String hint) {
         EditText e = new EditText(this);
         e.setSingleLine(true);
-        e.setMinHeight(dp(56));
+        e.setMinHeight(dp(48));
         e.setTextSize(16);
         e.setHint(hint);
         e.setTextColor(COLOR_TEXT_PRIMARY);
@@ -1005,7 +1005,7 @@ public final class SettingsActivity extends Activity {
             int icon = i == 0
                     ? (active ? R.drawable.nav_home_on : R.drawable.nav_home_off)
                     : (active ? R.drawable.nav_advanced_on : R.drawable.nav_advanced_off);
-            button.setBackground(roundedBg(active ? 0xFFD6E4EE : Color.TRANSPARENT, 20));
+            button.setBackground(roundedBg(active ? 0xFFD6E4EE : Color.TRANSPARENT, 22));
             button.setImageResource(icon);
             button.setContentDescription((i == 0 ? "主页" : "高级")
                     + (active ? "，已选择" : "，未选择"));
