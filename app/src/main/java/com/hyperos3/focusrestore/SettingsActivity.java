@@ -7,10 +7,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
 import android.content.pm.ApplicationInfo;
-import android.graphics.Canvas;
 import android.graphics.Color;
-import android.graphics.Paint;
-import android.graphics.Path;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.ColorDrawable;
@@ -166,7 +163,7 @@ public final class SettingsActivity extends Activity {
         shell.addView(bottomNav, new LinearLayout.LayoutParams(-1, -2));
 
         saveButton = createSaveButton();
-        FrameLayout.LayoutParams saveParams = new FrameLayout.LayoutParams(-2, dp(40),
+        FrameLayout.LayoutParams saveParams = new FrameLayout.LayoutParams(dp(62), dp(56),
                 Gravity.BOTTOM | Gravity.END);
         saveParams.setMargins(0, 0, dp(16), dp(88));
         root.addView(saveButton, saveParams);
@@ -175,14 +172,13 @@ public final class SettingsActivity extends Activity {
 
     private Button createSaveButton() {
         Button button = new Button(this);
-        button.setText("保存");
-        button.setTextSize(14);
-        button.setTextColor(Color.WHITE);
-        button.setBackground(roundedBg(COLOR_PRIMARY, 12));
+        button.setText("");
+        button.setContentDescription("保存设置");
+        button.setBackgroundResource(R.drawable.save_saved);
         button.setAllCaps(false);
-        button.setMinWidth(dp(72));
-        button.setMinHeight(dp(40));
-        button.setPadding(dp(16), 0, dp(16), 0);
+        button.setMinWidth(dp(62));
+        button.setMinHeight(dp(56));
+        button.setPadding(0, 0, 0, 0);
         button.setElevation(dp(6));
         if (Build.VERSION.SDK_INT >= 21) button.setStateListAnimator(null);
         button.setTranslationZ(0f);
@@ -227,18 +223,17 @@ public final class SettingsActivity extends Activity {
             Button item = new Button(this);
             item.setText("");
             item.setContentDescription(names[i]);
-            item.setMinHeight(dp(40));
-            item.setMinWidth(dp(64));
+            item.setMinHeight(dp(64));
+            item.setMinWidth(dp(72));
             item.setPadding(0, 0, 0, 0);
             item.setGravity(Gravity.CENTER);
-            item.setBackground(new NavigationButtonDrawable(page == 0, false));
-            item.setCompoundDrawablesWithIntrinsicBounds(new NavigationIconDrawable(page == 0, false), null, null, null);
+            item.setBackgroundResource(page == 0 ? R.drawable.nav_home_off : R.drawable.nav_advanced_off);
             flattenButton(item);
             item.setOnClickListener(v -> showPage(page));
             navButtons[i] = item;
-            LinearLayout.LayoutParams itemParams = new LinearLayout.LayoutParams(dp(64), dp(40));
+            LinearLayout.LayoutParams itemParams = new LinearLayout.LayoutParams(dp(72), dp(64));
             itemParams.gravity = Gravity.CENTER_VERTICAL;
-            itemParams.setMargins(dp(6), dp(4), dp(6), dp(4));
+            itemParams.setMargins(dp(2), 0, dp(2), 0);
             nav.addView(item, itemParams);
         }
         return nav;
@@ -343,7 +338,7 @@ public final class SettingsActivity extends Activity {
         forcePackagesButton.setAllCaps(false);
         forcePackagesButton.setTextSize(14);
         flattenButton(forcePackagesButton);
-        forcePackagesButton.setMinHeight(dp(40));
+        forcePackagesButton.setMinHeight(dp(56));
         forcePackagesButton.setOnClickListener(v -> showForcePackagesDialog());
         islandPanel.addView(forcePackagesButton, matchWrap(0));
         root.addView(islandPanel, matchWrap(dp(12)));
@@ -509,9 +504,8 @@ public final class SettingsActivity extends Activity {
         statusHint.setTextColor(dirty ? COLOR_PRIMARY
                 : (saveMessage != null && saveMessage.contains("失败") ? COLOR_ERROR : COLOR_TEXT_SECONDARY));
         if (saveButton != null) {
-            saveButton.setTextColor(dirty ? Color.WHITE : COLOR_TEXT_SECONDARY);
-            saveButton.setBackground(roundedBg(dirty ? COLOR_PRIMARY : COLOR_SURFACE_HIGH, 12));
-            saveButton.setContentDescription(dirty ? "保存未保存的设置" : "保存设置");
+            saveButton.setBackgroundResource(dirty ? R.drawable.save_pending : R.drawable.save_saved);
+            saveButton.setContentDescription(dirty ? "保存未保存的设置" : "设置已保存");
         }
     }
 
@@ -933,65 +927,6 @@ public final class SettingsActivity extends Activity {
         row.addView(r, new LinearLayout.LayoutParams(0, -2, 1f));
         return row;
     }
-    private final class NavigationButtonDrawable extends Drawable {
-        private final boolean active;
-        NavigationButtonDrawable(boolean home, boolean selected) { active = selected; }
-        public void draw(Canvas canvas) {
-            if (!active) return;
-            Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-            paint.setColor(COLOR_PRIMARY_LIGHT);
-            canvas.drawRoundRect(getBounds().left, getBounds().top, getBounds().right,
-                    getBounds().bottom, dp(16), dp(16), paint);
-        }
-        public void setAlpha(int alpha) { }
-        public void setColorFilter(android.graphics.ColorFilter filter) { }
-        public int getOpacity() { return android.graphics.PixelFormat.TRANSLUCENT; }
-        public int getIntrinsicWidth() { return dp(24); }
-        public int getIntrinsicHeight() { return dp(24); }
-    }
-
-    private final class NavigationIconDrawable extends Drawable {
-        private final boolean home;
-        private final boolean active;
-        NavigationIconDrawable(boolean isHome, boolean selected) { home = isHome; active = selected; }
-        public void draw(Canvas canvas) {
-            float scale = getBounds().width() / 24f;
-            canvas.save();
-            canvas.translate(getBounds().left, getBounds().top);
-            canvas.scale(scale, scale);
-            Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-            paint.setColor(active ? 0xFF101D26 : COLOR_TEXT_SECONDARY);
-            paint.setStyle(Paint.Style.STROKE);
-            paint.setStrokeWidth(home ? 1.8f : 2f);
-            paint.setStrokeCap(Paint.Cap.ROUND);
-            paint.setStrokeJoin(Paint.Join.ROUND);
-            if (home) {
-                Path path = new Path();
-                path.moveTo(2.5f, 11); path.lineTo(12, 2.5f); path.lineTo(21.5f, 11);
-                path.lineTo(21.5f, 12.5f); path.lineTo(19.5f, 12.5f); path.lineTo(19.5f, 21.5f);
-                path.lineTo(14.5f, 21.5f); path.lineTo(14.5f, 15.5f); path.lineTo(9.5f, 15.5f);
-                path.lineTo(9.5f, 21.5f); path.lineTo(4.5f, 21.5f); path.lineTo(4.5f, 12.5f);
-                path.lineTo(2.5f, 12.5f); path.close();
-                if (active) { paint.setStyle(Paint.Style.FILL); canvas.drawPath(path, paint); }
-                else canvas.drawPath(path, paint);
-            } else {
-                for (int i = 0; i < 3; i++) {
-                    float y = 7 + i * 5;
-                    canvas.drawLine(4, y, 20, y, paint);
-                    float x = i == 0 ? 15 : (i == 1 ? 9 : 17);
-                    if (active) { paint.setStyle(Paint.Style.FILL); canvas.drawCircle(x, y, 3, paint); paint.setStyle(Paint.Style.STROKE); }
-                    else canvas.drawCircle(x, y, 2.4f, paint);
-                }
-            }
-            canvas.restore();
-        }
-        public void setAlpha(int alpha) { }
-        public void setColorFilter(android.graphics.ColorFilter filter) { }
-        public int getOpacity() { return android.graphics.PixelFormat.TRANSLUCENT; }
-        public int getIntrinsicWidth() { return dp(24); }
-        public int getIntrinsicHeight() { return dp(24); }
-    }
-
     private Drawable roundedBg(int color, float radiusDp) {
         GradientDrawable drawable = new GradientDrawable();
         drawable.setColor(color);
@@ -1064,8 +999,10 @@ public final class SettingsActivity extends Activity {
             Button button = navButtons[i];
             boolean active = i == selected;
             button.setSelected(active);
-            button.setBackground(new NavigationButtonDrawable(i == 0, active));
-            button.setCompoundDrawablesWithIntrinsicBounds(new NavigationIconDrawable(i == 0, active), null, null, null);
+            int drawable = i == 0
+                    ? (active ? R.drawable.nav_home_on : R.drawable.nav_home_off)
+                    : (active ? R.drawable.nav_advanced_on : R.drawable.nav_advanced_off);
+            button.setBackgroundResource(drawable);
             button.setContentDescription(i == 0 ? "主页" : "高级");
             flattenButton(button);
         }
