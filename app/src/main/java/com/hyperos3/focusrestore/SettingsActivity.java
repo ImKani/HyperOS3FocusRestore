@@ -492,7 +492,7 @@ public final class SettingsActivity extends Activity {
         root.addView(sectionHeader("链接"), matchWrap(dp(8)));
         LinearLayout links = panel();
         Button github = actionButton("打开 GitHub", COLOR_PRIMARY, Color.WHITE);
-        github.setOnClickListener(v -> openExternalLink("https://github.com/ImKani/HyperOS3FocusRestore"));
+        github.setOnClickListener(v -> openExternalLink("https://github.com/ImKani/FocusRestore"));
         links.addView(github, matchWrap(dp(8)));
         Button coolapk = actionButton("酷安主页", COLOR_SURFACE_HIGH, COLOR_PRIMARY);
         coolapk.setOnClickListener(v -> openExternalLink("https://www.coolapk.com/u/1205658"));

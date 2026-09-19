@@ -2,7 +2,7 @@
 
 用于 HyperOS 3/4 的实验性 LSPosed 模块，尝试恢复 HyperOS 2 的 Focus（焦点通知）状态栏显示路径。
 
-仓库地址：`https://github.com/ImKani/HyperOS3FocusRestore`
+仓库地址：`https://github.com/ImKani/FocusRestore`
 
 ## 作者与声明
 
@@ -10,7 +10,7 @@
 
 酷安主页：<https://www.coolapk.com/u/1205658>
 
-GitHub：<https://github.com/ImKani/HyperOS3FocusRestore>
+GitHub：<https://github.com/ImKani/FocusRestore>
 
 本模块由 AI 辅助反编译分析与编写，代码通过 LSPosed Hook 介入系统界面，存在 ROM 版本差异、系统崩溃、状态栏显示异常、功能失效、数据丢失或其他不可控风险。使用前请自行备份，并自行承担使用风险。模块不保证适用于所有设备、系统版本或第三方通知。
 
