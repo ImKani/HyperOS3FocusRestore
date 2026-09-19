@@ -86,7 +86,7 @@ public final class SettingsActivity extends Activity {
     private String saveMessage;
     private Dialog activeDialog;
     private ScrollView pageScroll;
-    private final int[] scrollPositions = new int[3];
+    private final int[] scrollPositions = new int[2];
 
     private Button os3ModeButton;
     private Button os4ModeButton;
@@ -162,6 +162,11 @@ public final class SettingsActivity extends Activity {
         applyBottomInsets(bottomNav);
         shell.addView(bottomNav, new LinearLayout.LayoutParams(-1, -2));
 
+        saveButton = createSaveButton();
+        FrameLayout.LayoutParams saveParams = new FrameLayout.LayoutParams(-2, dp(40),
+                Gravity.BOTTOM | Gravity.END);
+        saveParams.setMargins(0, 0, dp(16), dp(88));
+        root.addView(saveButton, saveParams);
         return root;
     }
 
@@ -200,8 +205,6 @@ public final class SettingsActivity extends Activity {
         pageTitle = text("设置", 12, COLOR_TEXT_SECONDARY);
         pageTitle.setGravity(Gravity.CENTER);
         bar.addView(pageTitle, new LinearLayout.LayoutParams(0, -1, 1f));
-        saveButton = createSaveButton();
-        bar.addView(saveButton, new LinearLayout.LayoutParams(-2, dp(40)));
         return bar;
     }
 
@@ -211,7 +214,7 @@ public final class SettingsActivity extends Activity {
         nav.setGravity(Gravity.CENTER);
         nav.setBackgroundColor(COLOR_SURFACE_HIGH);
         nav.setPadding(dp(8), dp(4), dp(8), dp(4));
-        String[] names = {"主页", "高级", "关于"};
+        String[] names = {"主页", "高级"};
         navButtons = new Button[names.length];
         for (int i = 0; i < names.length; i++) {
             final int page = i;
@@ -238,8 +241,8 @@ public final class SettingsActivity extends Activity {
         if (pageScroll != null) scrollPositions[currentPage] = pageScroll.getScrollY();
         currentPage = page;
         pageContainer.removeAllViews();
-        pageTitle.setText(page == 0 ? "主页" : page == 1 ? "高级" : "关于");
-        saveButton.setVisibility(page == 2 ? View.GONE : View.VISIBLE);
+        pageTitle.setText(page == 0 ? "主页" : "高级");
+        saveButton.setVisibility(View.VISIBLE);
         renderPendingStatus();
         updateNavButtons(page);
         ScrollView scroll = new ScrollView(this);
@@ -249,8 +252,7 @@ public final class SettingsActivity extends Activity {
         content.setOrientation(LinearLayout.VERTICAL);
         content.setPadding(dp(16), dp(12), dp(16), dp(24));
         if (page == 0) buildSettingsPage(content);
-        else if (page == 1) buildAdvancedPage(content);
-        else buildAboutPage(content);
+        else buildAdvancedPage(content);
         scroll.addView(content);
         pageContainer.addView(scroll, new LinearLayout.LayoutParams(-1, -1));
         renderPendingStatus();
@@ -401,15 +403,17 @@ public final class SettingsActivity extends Activity {
             disableIslandPropertySwitch.setChecked(pendingDisableIslandProperty);
             disableIslandFeatureCacheSwitch.setChecked(pendingDisableIslandFeatureCache);
         }
+        buildAboutSections(root);
         addStatus(root);
         installSettingsListeners();
     }
 
-    private void buildAboutPage(LinearLayout root) {
+    private void buildAboutSections(LinearLayout root) {
         root.addView(sectionHeader("关于"), matchWrap(dp(8)));
         LinearLayout aboutPanel = panel();
         TextView about = text("FocusRestore\n\n用于 HyperOS 3/4 的实验性 LSPosed 模块，尝试恢复 HyperOS 2 的焦点通知状态栏显示路径。\n\n本模块通过 LSPosed Hook 介入系统界面，存在 ROM 版本差异、系统崩溃、状态栏显示异常、功能失效、数据丢失或其他不可控风险。使用前请自行备份，并自行承担使用风险。\n\n作者：ImKani", 15, COLOR_TEXT_PRIMARY);
-        aboutPanel.addView(about, matchWrap(0));
+        aboutPanel.addView(about, matchWrap(dp(8)));
+        aboutPanel.addView(text("当前版本：v" + BuildConfig.VERSION_NAME, 14, COLOR_TEXT_SECONDARY), matchWrap(0));
         root.addView(aboutPanel, matchWrap(dp(12)));
 
         root.addView(sectionHeader("链接"), matchWrap(dp(8)));
@@ -417,7 +421,7 @@ public final class SettingsActivity extends Activity {
         Button github = actionButton("打开 GitHub", COLOR_PRIMARY, Color.WHITE);
         github.setOnClickListener(v -> openExternalLink("https://github.com/ImKani/HyperOS3FocusRestore"));
         links.addView(github, matchWrap(dp(8)));
-        Button coolapk = actionButton("酷安主页", COLOR_SURFACE, COLOR_PRIMARY);
+        Button coolapk = actionButton("酷安主页", COLOR_SURFACE_HIGH, COLOR_PRIMARY);
         coolapk.setOnClickListener(v -> openExternalLink("https://www.coolapk.com/u/1205658"));
         links.addView(coolapk, matchWrap(0));
         root.addView(links, matchWrap(dp(12)));
@@ -467,7 +471,7 @@ public final class SettingsActivity extends Activity {
     }
 
     private void restorePendingState(Bundle state) {
-        currentPage = state.getInt("m3.page", 0);
+        currentPage = Math.max(0, Math.min(1, state.getInt("m3.page", 0)));
         dirty = state.getBoolean("m3.dirty", false);
         saveMessage = state.getString("m3.saveMessage");
         pendingHookMode = state.getInt("m3.mode", pendingHookMode);
@@ -588,7 +592,7 @@ public final class SettingsActivity extends Activity {
     private View createWhitelistDialogView(final Dialog dialog) {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackground(roundedBg(COLOR_SURFACE_HIGH, 28));
+        root.setBackground(roundedBg(COLOR_SURFACE_HIGH, 12));
         if (Build.VERSION.SDK_INT >= 29) root.setForceDarkAllowed(false);
         root.setPadding(dp(16), dp(16), dp(16), dp(8));
         TextView title = text("强制转换超级岛应用", 18, COLOR_TEXT_PRIMARY);
@@ -825,11 +829,11 @@ public final class SettingsActivity extends Activity {
         EditText e = new EditText(this);
         e.setSingleLine(true);
         e.setMinHeight(dp(56));
-        e.setTextSize(15);
+        e.setTextSize(16);
         e.setHint(hint);
         e.setTextColor(COLOR_TEXT_PRIMARY);
         e.setHintTextColor(COLOR_TEXT_SECONDARY);
-        e.setPadding(dp(14), 0, dp(14), 0);
+        e.setPadding(dp(16), 0, dp(16), 0);
         e.setBackground(inputBackground());
         e.addTextChangedListener(new TextWatcher() {
             public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
