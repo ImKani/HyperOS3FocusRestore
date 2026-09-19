@@ -72,8 +72,61 @@ public class IslandPayloadParserTest {
     }
 
     @Test
+    public void extractsSmallIslandPictureBeforeOtherPictures() {
+        String payload = "{\"param_v2\":{\"baseInfo\":{\"picFunction\":\"miui.focus.pic_app\"},"
+                + "\"param_island\":{\"smallIslandArea\":{\"picInfo\":{"
+                + "\"pic\":\"miui.focus.pic_weather\"}}}}}}";
+        assertEquals("miui.focus.pic_weather",
+                IslandPayloadParser.findPictureReference(payload, false));
+    }
+
+    @Test
+    public void prefersDarkPictureAndFallsBackToLight() {
+        String withDark = "{\"param_v2\":{\"param_island\":{\"bigIslandArea\":{"
+                + "\"picFunction\":\"miui.focus.pic_pay\","
+                + "\"picFunctionDark\":\"miui.focus.pic_pay_dark\"}}}}}";
+        assertEquals("miui.focus.pic_pay_dark",
+                IslandPayloadParser.findPictureReference(withDark, true));
+        assertEquals("miui.focus.pic_pay",
+                IslandPayloadParser.findPictureReference(withDark, false));
+        assertEquals("miui.focus.pic_pay",
+                IslandPayloadParser.findPictureReference(
+                        "{\"pic\":\"miui.focus.pic_pay\"}", true));
+    }
+
+    @Test
+    public void usesDeterministicPictureKeyPriority() {
+        String payload = "{\"param_v2\":{\"baseInfo\":{"
+                + "\"picFunction\":\"miui.focus.pic_function\","
+                + "\"pic\":\"miui.focus.pic_primary\"}}}";
+        assertEquals("miui.focus.pic_primary",
+                IslandPayloadParser.findPictureReference(payload, false));
+    }
+
+    @Test
+    public void acceptsAnimationSourceOnlyInsideAnimIconInfo() {
+        String payload = "{\"param_v2\":{\"animTextInfo\":{\"animIconInfo\":{"
+                + "\"src\":\"miui.focus.pic_animation\"}}}}";
+        assertEquals("miui.focus.pic_animation",
+                IslandPayloadParser.findPictureReference(payload, false));
+        assertNull(IslandPayloadParser.findPictureReference(
+                "{\"src\":\"miui.focus.pic_background\"}", false));
+    }
+
+    @Test
+    public void rejectsNonIconPictureReference() {
+        assertNull(IslandPayloadParser.findPictureReference(
+                "{\"pic\":\"https://example.invalid/icon.png\"}", false));
+        assertNull(IslandPayloadParser.findPictureReference(
+                "{\"picCover\":\"miui.focus.pic_album_art\"}", false));
+        assertNull(IslandPayloadParser.findPictureReference(
+                "{\"picBg\":\"miui.focus.pic_background\"}", false));
+    }
+
+    @Test
     public void rejectsInvalidJson() {
         assertNull(IslandPayloadParser.parse("{invalid", "·", "·"));
+        assertNull(IslandPayloadParser.findPictureReference("{invalid", false));
     }
 
     private static String repeat(char value, int count) {

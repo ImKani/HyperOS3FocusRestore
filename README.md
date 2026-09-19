@@ -24,9 +24,9 @@ GitHub：<https://github.com/ImKani/HyperOS3FocusRestore>
 
 ## 当前版本
 
-版本：`0.13.21`
+版本：`0.13.22`
 
-本版本新增 HyperOS 4 手动适配，并保留原 HyperOS 3 Hook：
+本版本修复 0.13.21 的入口初始化回归，并保留 HyperOS 3/4 手动适配：
 
 - 由用户手动选择 HyperOS 3 或 HyperOS 4，默认 HyperOS 3；变更自动保存，重启 SystemUI 或设备后生效
 - 设置在后台按代次同步到 CE 与 Direct Boot 可读的设备加密存储；启动设置页时会用较新代次修复另一份副本
@@ -45,7 +45,9 @@ GitHub：<https://github.com/ImKani/HyperOS3FocusRestore>
 - 超级岛内容转焦点通知（可选开关）
 - 焦点通知宽度限制与滚动方向控制
 - 焦点通知点击控制
+- 修复 0.13.21 在 LSPosed 入口对象构造阶段依赖主 Looper，导致 OS3/OS4 全部 Hook 未安装的问题；主线程 Handler 只在 SystemUI `Application.attach()` 后创建
 - 两条超级岛屏蔽路径在两种模式下均保持启用
+- 转换超级岛时优先复用 `miui.focus.pics` 中由小岛/大岛 JSON 引用的图标；OS4 无岛图标时使用通知 small icon，OS3 写回并在 Bean 复用时恢复 ROM 原图标
 - OS3 关闭宽度限制时恢复各 View 的最新 ROM 原值；未挂载文本使用有界 attach 等待启动跑马灯
 - OS3 已知 RemoteViews 绑定异常按通知降级为文本或丢弃坏候选，未知异常保持原样并完整记录
 - OS4 合并过期渲染任务，以 Pipeline、状态栏 Host、DarkReceiver 和候选代次隔离旧回调
@@ -66,7 +68,7 @@ Hook 入口：com.hyperos3.focusrestore.HyperOS3FocusRestoreHook
 
 - 通过 LSPosed 模块恢复 HyperOS 2 的焦点通知显示路径，使部分通知可以显示在状态栏焦点区域。
 - HyperOS 3 模式保留原有 `FocusedNotifPromptView` Hook；HyperOS 4 模式通过通知集合事件维护显示状态，并复用系统 `ongoing_activity_chip_primary` 位置。两种模式只安装用户选择的对应 Hook。
-- 提供“转换超级岛内容为焦点通知”开关，开启后会尝试从带有超级岛协议的通知中提取文本内容，补入焦点通知显示。仅处理文本，不支持图片、按钮或动态计时器；对于没有超级岛参数的普通通知不会生成额外内容。HyperOS 4 转换不会强制修改 `mIsFocusNotification`。
+- 提供“转换超级岛内容为焦点通知”开关，开启后会尝试从带有超级岛协议的通知中提取文本与状态图标，补入焦点通知显示。只复用 JSON 明确引用的 `miui.focus.pic_` 图标，不使用封面或背景图；不支持按钮或动态计时器。对于没有超级岛参数的普通通知不会生成额外内容，HyperOS 4 转换不会强制修改 `mIsFocusNotification`。
 - 提供焦点通知宽度限制开关（默认开启，上限 160dp）。HyperOS 4 会先测量完整内容，再将显示 Host 截断到该上限并在超宽时滚动。
 - HyperOS 4 焦点内容跟随状态栏时钟实时反色，适配浅色/深色应用界面和状态栏外观变化。
 - 提供两个 HyperOS 4 专用开关：“焦点通知隐藏其他图标”和“显示焦点通知分隔竖线”，均默认开启；选择 HyperOS 3 时保留其设置值但在界面中浅色禁用。
@@ -138,15 +140,15 @@ Android Gradle Plugin 8.7.3
 构建 debug 或 release 变体，APK 输出路径：
 
 ```text
-app/build/outputs/apk/debug/HyperOS3FocusRestore-0.13.21-debug.apk
-app/build/outputs/apk/release/HyperOS3FocusRestore-0.13.21-release.apk
+app/build/outputs/apk/debug/FocusRestore-0.13.22-debug.apk
+app/build/outputs/apk/release/FocusRestore-0.13.22-release.apk
 ```
 
 模块不声明网络、存储或后台服务权限。为显示白名单应用列表，Manifest 声明包可见性相关的 `QUERY_ALL_PACKAGES` 和小米系统权限 `com.android.permission.GET_INSTALLED_APPS`；关于项目按钮通过系统浏览器打开外部链接，网络访问由浏览器处理。配置 XML 保持私有，但导出的只读 Provider 必须允许不同签名的 SystemUI 查询，因此其他应用也可能读取模式、白名单等配置；Provider 不提供写接口。
 
 ## 安装和作用域
 
-1. 安装 `HyperOS3FocusRestore-0.13.21-release.apk` 或 `HyperOS3FocusRestore-0.13.21-debug.apk`。
+1. 安装 `FocusRestore-0.13.22-release.apk` 或 `FocusRestore-0.13.22-debug.apk`。
 2. 在 LSPosed 中启用本模块。
 3. 作用域应只有：
 

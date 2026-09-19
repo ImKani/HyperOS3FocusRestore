@@ -8,11 +8,12 @@ import android.content.Context;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
-import android.os.Looper;
 import android.os.Parcelable;
 import android.os.SystemClock;
 import android.database.Cursor;
 import android.graphics.Rect;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.Icon;
 import org.json.JSONObject;
 import android.net.Uri;
 import android.text.TextUtils;
@@ -83,7 +84,7 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
     private boolean modeHooksInstalled;
     private int installedHookMode;
     private HyperOS4FocusController os4Controller;
-    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private Handler mainHandler;
     private TextView pendingMarqueeText;
     private Runnable pendingMarqueeRunnable;
     private View.OnAttachStateChangeListener pendingMarqueeAttachListener;
@@ -124,6 +125,7 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
             }
         }
         classLoader = lpparam.classLoader;
+        log("entry loaded in " + lpparam.packageName + "/" + lpparam.processName);
         hookApplicationAttach();
         hookDynamicIslandSystemProperty();
         disableDynamicIslandFeatureCache();
@@ -233,6 +235,7 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
                                 Context applicationContext = attachedContext.getApplicationContext();
                                 systemUiContext = applicationContext != null
                                         ? applicationContext : attachedContext;
+                                mainHandler = new Handler(attachedContext.getMainLooper());
                                 log("SystemUI attach context available class="
                                         + systemUiContext.getClass().getName()
                                         + " applicationContext=" + (applicationContext != null)
@@ -1154,7 +1157,9 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
                         boolean originalFocus = preMarkedFocus != null
                                 ? preMarkedFocus : getBooleanField(expanded,
                                 "mIsFocusNotification", data.isFocus);
-                        state = new OriginalBeanState(expanded, originalFocus, current);
+                        state = new OriginalBeanState(expanded, originalFocus, current,
+                                getField(bean, "icon"), getField(bean, "iconDark"),
+                                getField(bean, "drawable"), getField(bean, "drawableDark"));
                         originalBeanStates.put(bean, state);
                     } else if (!TextUtils.equals(current, state.lastConvertedContent)) {
                         state.originalContent = current;
@@ -1167,6 +1172,7 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
                 preMarkedOriginalFocus.remove(expanded);
                 data.content = islandText.text;
                 data.isFocus = true;
+                applyConvertedBeanIcon(bean, state, data, stage);
                 convertedBeans.add(bean);
                 rememberConvertedNotificationKey(data.key);
                 log(stage + " applied island focus source=" + islandText.source
@@ -1204,26 +1210,170 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
         log(stage + " " + data.summary());
     }
 
+    private void applyConvertedBeanIcon(Object bean, OriginalBeanState state,
+                                        FocusData data, String stage) {
+        SelectedFocusIcon light = selectFocusIcon(data.notification, data.islandParam,
+                false, false);
+        if (light == null) {
+            restoreConvertedBeanIcon(bean, state, stage);
+            return;
+        }
+        if (systemUiContext == null) return;
+        SelectedFocusIcon dark = selectFocusIcon(data.notification, data.islandParam,
+                true, false);
+        if (dark == null) dark = light;
+        final Drawable drawable;
+        final Drawable drawableDark;
+        try {
+            drawable = light.icon.loadDrawable(systemUiContext);
+            drawableDark = dark.icon.loadDrawable(systemUiContext);
+            if (drawable == null || drawableDark == null) {
+                log(stage + " island focus icon load returned null package=" + data.packageName
+                        + " lightType=" + light.icon.getType()
+                        + " darkType=" + dark.icon.getType());
+                restoreConvertedBeanIcon(bean, state, stage + " nullIslandIcon");
+                return;
+            }
+        } catch (Throwable throwable) {
+            error(stage + " loadIslandIcon", throwable);
+            return;
+        }
+
+        refreshOriginalBeanIconState(bean, state);
+        boolean success = true;
+        if (hasField(bean, "icon")) {
+            state.patchedIcon = setObjectField(bean, "icon", light.icon,
+                    stage + " setIcon");
+            if (state.patchedIcon) state.lastConvertedIcon = light.icon;
+            else success = false;
+        }
+        if (hasField(bean, "iconDark")) {
+            state.patchedIconDark = setObjectField(bean, "iconDark", dark.icon,
+                    stage + " setIconDark");
+            if (state.patchedIconDark) state.lastConvertedIconDark = dark.icon;
+            else success = false;
+        }
+        if (hasField(bean, "drawable")) {
+            state.patchedDrawable = setObjectField(bean, "drawable", drawable,
+                    stage + " setDrawable");
+            if (state.patchedDrawable) state.lastConvertedDrawable = drawable;
+            else success = false;
+        }
+        if (hasField(bean, "drawableDark")) {
+            state.patchedDrawableDark = setObjectField(bean, "drawableDark", drawableDark,
+                    stage + " setDrawableDark");
+            if (state.patchedDrawableDark) state.lastConvertedDrawableDark = drawableDark;
+            else success = false;
+        }
+        if (!success) {
+            restoreConvertedBeanIcon(bean, state, stage + " rollbackIslandIcon");
+            return;
+        }
+        log(stage + " applied island focus icon light=" + light.source
+                + " dark=" + dark.source);
+    }
+
+    private void refreshOriginalBeanIconState(Object bean, OriginalBeanState state) {
+        Object current = getField(bean, "icon");
+        if (!state.patchedIcon || current != state.lastConvertedIcon) state.originalIcon = current;
+        current = getField(bean, "iconDark");
+        if (!state.patchedIconDark || current != state.lastConvertedIconDark) {
+            state.originalIconDark = current;
+        }
+        current = getField(bean, "drawable");
+        if (!state.patchedDrawable || current != state.lastConvertedDrawable) {
+            state.originalDrawable = current;
+        }
+        current = getField(bean, "drawableDark");
+        if (!state.patchedDrawableDark || current != state.lastConvertedDrawableDark) {
+            state.originalDrawableDark = current;
+        }
+    }
+
+    private boolean restoreConvertedBeanIcon(Object bean, OriginalBeanState state, String stage) {
+        refreshOriginalBeanIconState(bean, state);
+        boolean success = true;
+        if (state.patchedIcon) {
+            boolean restored = setObjectField(bean, "icon", state.originalIcon, stage + " icon");
+            state.patchedIcon = !restored;
+            if (restored) state.lastConvertedIcon = null;
+            success &= restored;
+        }
+        if (state.patchedIconDark) {
+            boolean restored = setObjectField(bean, "iconDark", state.originalIconDark,
+                    stage + " iconDark");
+            state.patchedIconDark = !restored;
+            if (restored) state.lastConvertedIconDark = null;
+            success &= restored;
+        }
+        if (state.patchedDrawable) {
+            boolean restored = setObjectField(bean, "drawable", state.originalDrawable,
+                    stage + " drawable");
+            state.patchedDrawable = !restored;
+            if (restored) state.lastConvertedDrawable = null;
+            success &= restored;
+        }
+        if (state.patchedDrawableDark) {
+            boolean restored = setObjectField(bean, "drawableDark", state.originalDrawableDark,
+                    stage + " drawableDark");
+            state.patchedDrawableDark = !restored;
+            if (restored) state.lastConvertedDrawableDark = null;
+            success &= restored;
+        }
+        return success;
+    }
+
     private void restoreOriginalBean(Object bean, FocusData data, String stage) {
         OriginalBeanState state;
         synchronized (originalBeanStates) {
-            state = originalBeanStates.remove(bean);
+            state = originalBeanStates.get(bean);
         }
         if (state == null) return;
         clearPreMark(state.expanded, false);
-        try {
-            XposedHelpers.setObjectField(bean, "content", state.originalContent);
-            if (state.expanded != null) {
-                XposedHelpers.setBooleanField(state.expanded, "mIsFocusNotification", state.originalFocus);
+        boolean contentRestored = setObjectField(bean, "content", state.originalContent,
+                stage + " restoreContent");
+        boolean iconRestored = restoreConvertedBeanIcon(bean, state, stage + " restoreIcon");
+        boolean focusRestored = true;
+        if (state.expanded != null && hasField(state.expanded, "mIsFocusNotification")) {
+            try {
+                XposedHelpers.setBooleanField(state.expanded, "mIsFocusNotification",
+                        state.originalFocus);
+            } catch (Throwable throwable) {
+                focusRestored = false;
+                error(stage + " restoreFocusField", throwable);
             }
-            if (data != null) {
-                data.content = state.originalContent;
-                data.isFocus = state.originalFocus;
+        }
+        if (data != null) {
+            if (contentRestored) data.content = state.originalContent;
+            if (focusRestored) data.isFocus = state.originalFocus;
+        }
+        if (contentRestored && iconRestored && focusRestored) {
+            synchronized (originalBeanStates) {
+                if (originalBeanStates.get(bean) == state) originalBeanStates.remove(bean);
             }
             convertedBeans.remove(bean);
-            log(stage + " restored original focus content");
-        } catch (Throwable t) {
-            error(stage + " restoreOriginalContent", t);
+            log(stage + " restored original focus content and icon");
+        }
+    }
+
+    private static boolean hasField(Object target, String fieldName) {
+        if (target == null) return false;
+        try {
+            return XposedHelpers.findFieldIfExists(target.getClass(), fieldName) != null;
+        } catch (Throwable throwable) {
+            error("probe field " + fieldName, throwable);
+            return false;
+        }
+    }
+
+    private static boolean setObjectField(Object target, String fieldName, Object value,
+                                          String stage) {
+        try {
+            XposedHelpers.setObjectField(target, fieldName, value);
+            return true;
+        } catch (Throwable throwable) {
+            error(stage, throwable);
+            return false;
         }
     }
 
@@ -1232,6 +1382,42 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
         IslandPayloadParser.ParsedText parsed = IslandPayloadParser.parse(
                 data.islandParam, currentSettings.generalSeparator, currentSettings.sideSeparator);
         return parsed == null ? null : new IslandText(parsed.text, parsed.source);
+    }
+
+    private SelectedFocusIcon selectFocusIcon(Notification notification, String islandParam,
+                                                boolean dark, boolean allowSmallFallback) {
+        if (notification == null) return null;
+        Bundle extras = notification.extras;
+        Bundle pictures = extras == null ? null : extras.getBundle("miui.focus.pics");
+        String directReference = extras == null ? null : extras.getString(
+                dark ? "miui.focus.pic_ticker_dark" : "miui.focus.pic_ticker");
+        Icon icon = iconFromBundle(pictures, directReference);
+        if (icon != null) return new SelectedFocusIcon(icon, false, "ticker:" + directReference);
+
+        String payloadReference = IslandPayloadParser.findPictureReference(islandParam, dark);
+        icon = iconFromBundle(pictures, payloadReference);
+        if (icon != null) return new SelectedFocusIcon(icon, false, "island:" + payloadReference);
+
+        if (dark) {
+            String lightReference = extras == null ? null
+                    : extras.getString("miui.focus.pic_ticker");
+            icon = iconFromBundle(pictures, lightReference);
+            if (icon != null) return new SelectedFocusIcon(icon, false,
+                    "tickerLight:" + lightReference);
+        }
+        if (!allowSmallFallback) return null;
+        icon = notification.getSmallIcon();
+        return icon == null ? null : new SelectedFocusIcon(icon, true, "notificationSmallIcon");
+    }
+
+    private static Icon iconFromBundle(Bundle pictures, String reference) {
+        if (pictures == null || TextUtils.isEmpty(reference)) return null;
+        try {
+            Parcelable value = pictures.getParcelable(reference);
+            return value instanceof Icon ? (Icon) value : null;
+        } catch (Throwable ignored) {
+            return null;
+        }
     }
 
     @SuppressWarnings("unused")
@@ -1543,9 +1729,20 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
                         + " " + data.summary());
                 return null;
             }
+            SelectedFocusIcon focusIcon = selectFocusIcon(notification, data.islandParam,
+                    false, true);
+            SelectedFocusIcon focusIconDark = selectFocusIcon(notification, data.islandParam,
+                    true, true);
+            log("OS4 native focus icon key=" + key + " light="
+                    + (focusIcon == null ? "none" : focusIcon.source) + " dark="
+                    + (focusIconDark == null ? "none" : focusIconDark.source));
             return new HyperOS4FocusController.DisplayItem(key, data.packageName,
                     cleanText(data.ticker), "nativeFocus", data.barRv, data.barNightRv,
-                    contentIntent, OS4FocusPriorityPolicy.PRIORITY_NATIVE_FOCUS);
+                    contentIntent, focusIcon == null ? null : focusIcon.icon,
+                    focusIconDark == null ? null : focusIconDark.icon,
+                    focusIcon != null && focusIcon.tint,
+                    focusIconDark != null && focusIconDark.tint,
+                    OS4FocusPriorityPolicy.PRIORITY_NATIVE_FOCUS);
         }
 
         // OS4 may mark an island notification as Focus before it has any native
@@ -1568,8 +1765,19 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
             priority = OS4FocusPriorityPolicy.PRIORITY_ISLAND;
             source = "island:" + islandText.source;
         }
+        SelectedFocusIcon focusIcon = selectFocusIcon(notification, data.islandParam,
+                false, true);
+        SelectedFocusIcon focusIconDark = selectFocusIcon(notification, data.islandParam,
+                true, true);
+        log("OS4 island focus icon key=" + key + " light="
+                + (focusIcon == null ? "none" : focusIcon.source) + " dark="
+                + (focusIconDark == null ? "none" : focusIconDark.source));
         return new HyperOS4FocusController.DisplayItem(key, data.packageName,
-                islandText.text, source, null, null, contentIntent, priority);
+                islandText.text, source, null, null, contentIntent,
+                focusIcon == null ? null : focusIcon.icon,
+                focusIconDark == null ? null : focusIconDark.icon,
+                focusIcon != null && focusIcon.tint,
+                focusIconDark != null && focusIconDark.tint, priority);
     }
 
     private FocusData inspectBean(Object bean) {
@@ -1607,6 +1815,7 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
                 if (sbnNotification instanceof Notification) notification = (Notification) sbnNotification;
             }
 
+            data.notification = notification;
             if (notification == null || notification.extras == null) return data;
             Bundle extras = notification.extras;
             boolean explicitFocus = extras.getBoolean("miui.focus.isFocus", false);
@@ -1756,11 +1965,41 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
         final boolean originalFocus;
         String originalContent;
         String lastConvertedContent;
+        Object originalIcon;
+        Object originalIconDark;
+        Object originalDrawable;
+        Object originalDrawableDark;
+        Object lastConvertedIcon;
+        Object lastConvertedIconDark;
+        Object lastConvertedDrawable;
+        Object lastConvertedDrawableDark;
+        boolean patchedIcon;
+        boolean patchedIconDark;
+        boolean patchedDrawable;
+        boolean patchedDrawableDark;
 
-        OriginalBeanState(Object expanded, boolean originalFocus, String originalContent) {
+        OriginalBeanState(Object expanded, boolean originalFocus, String originalContent,
+                          Object originalIcon, Object originalIconDark,
+                          Object originalDrawable, Object originalDrawableDark) {
             this.expanded = expanded;
             this.originalFocus = originalFocus;
             this.originalContent = originalContent;
+            this.originalIcon = originalIcon;
+            this.originalIconDark = originalIconDark;
+            this.originalDrawable = originalDrawable;
+            this.originalDrawableDark = originalDrawableDark;
+        }
+    }
+
+    private static final class SelectedFocusIcon {
+        final Icon icon;
+        final boolean tint;
+        final String source;
+
+        SelectedFocusIcon(Icon icon, boolean tint, String source) {
+            this.icon = icon;
+            this.tint = tint;
+            this.source = source;
         }
     }
 
@@ -1794,6 +2033,7 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
         RemoteViews barNightRv;
         RemoteViews contentRv;
         RemoteViews contentNightRv;
+        Notification notification;
 
         boolean hasDisplayContent() {
             return hasMainRv || hasBarRv || !TextUtils.isEmpty(ticker)

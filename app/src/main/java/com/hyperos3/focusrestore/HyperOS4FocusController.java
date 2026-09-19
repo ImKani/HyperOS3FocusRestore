@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.res.Configuration;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.drawable.Icon;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -13,6 +14,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.LinearInterpolator;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.RemoteViews;
 import android.widget.TextView;
 
@@ -51,12 +53,17 @@ final class HyperOS4FocusController {
         final RemoteViews remoteViews;
         final RemoteViews remoteViewsNight;
         final PendingIntent contentIntent;
+        final Icon icon;
+        final Icon iconDark;
+        final boolean tintIcon;
+        final boolean tintIconDark;
         final int priority;
         long updateSequence;
 
         DisplayItem(String key, String packageName, String text, String source,
                     RemoteViews remoteViews, RemoteViews remoteViewsNight,
-                    PendingIntent contentIntent, int priority) {
+                    PendingIntent contentIntent, Icon icon, Icon iconDark,
+                    boolean tintIcon, boolean tintIconDark, int priority) {
             this.key = key;
             this.packageName = packageName;
             this.text = text;
@@ -64,6 +71,10 @@ final class HyperOS4FocusController {
             this.remoteViews = remoteViews;
             this.remoteViewsNight = remoteViewsNight;
             this.contentIntent = contentIntent;
+            this.icon = icon;
+            this.iconDark = iconDark;
+            this.tintIcon = tintIcon;
+            this.tintIconDark = tintIconDark;
             this.priority = priority;
         }
 
@@ -783,6 +794,8 @@ final class HyperOS4FocusController {
         private Runnable pendingAnimation;
         private View content;
         private View divider;
+        private ImageView iconView;
+        private boolean tintCurrentIcon;
         private int contentInsetPx;
         private int maxWidthPx = Integer.MAX_VALUE;
         private boolean blockClicks = true;
@@ -810,6 +823,39 @@ final class HyperOS4FocusController {
                         dividerWidth, dividerHeight, Gravity.CENTER_VERTICAL | Gravity.START);
                 addView(divider, dividerParams);
             }
+            boolean usingDarkIcon = isNightMode() && item.iconDark != null;
+            Icon selectedIcon = usingDarkIcon ? item.iconDark : item.icon;
+            if (selectedIcon != null && nextContent instanceof TextView) {
+                try {
+                    int iconSize = Math.max(1, Math.round(18f * density));
+                    int iconGap = Math.max(1, Math.round(5f * density));
+                    iconView = new ImageView(getContext());
+                    iconView.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+                    android.graphics.drawable.Drawable iconDrawable =
+                            selectedIcon.loadDrawable(getContext());
+                    if (iconDrawable == null) {
+                        throw new IllegalStateException("Icon.loadDrawable returned null package="
+                                + item.packageName + " type=" + selectedIcon.getType());
+                    }
+                    iconView.setImageDrawable(iconDrawable);
+                    tintCurrentIcon = usingDarkIcon ? item.tintIconDark : item.tintIcon;
+                    if (tintCurrentIcon) iconView.setColorFilter(currentTint);
+                    LayoutParams iconParams = new LayoutParams(
+                            iconSize, iconSize, Gravity.CENTER_VERTICAL | Gravity.START);
+                    iconParams.setMarginStart(contentInsetPx);
+                    addView(iconView, iconParams);
+                    if (settings.allowFocusClick && item.contentIntent != null) {
+                        iconView.setOnClickListener(view -> send(item.contentIntent, item.key));
+                    }
+                    contentInsetPx += iconSize + iconGap;
+                    logger.log("OS4 focus icon attached key=" + item.key
+                            + " tinted=" + tintCurrentIcon);
+                } catch (Throwable throwable) {
+                    iconView = null;
+                    tintCurrentIcon = false;
+                    logger.error("OS4 load focus icon key=" + item.key, throwable);
+                }
+            }
             content = nextContent;
             LayoutParams params = new LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT,
@@ -829,6 +875,11 @@ final class HyperOS4FocusController {
                     + " bounce=" + settings.marqueeBounce);
         }
 
+        private boolean isNightMode() {
+            return (getResources().getConfiguration().uiMode
+                    & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+        }
+
         void clearContent() {
             if (pendingAnimation != null) {
                 removeCallbacks(pendingAnimation);
@@ -842,6 +893,8 @@ final class HyperOS4FocusController {
             removeAllViews();
             content = null;
             divider = null;
+            iconView = null;
+            tintCurrentIcon = false;
             contentInsetPx = 0;
         }
 
@@ -882,6 +935,13 @@ final class HyperOS4FocusController {
 
         void updateDividerTint() {
             if (divider != null) divider.setBackgroundColor(currentTint);
+            if (iconView != null && tintCurrentIcon) iconView.setColorFilter(currentTint);
+        }
+
+        @Override
+        protected void onConfigurationChanged(Configuration newConfig) {
+            super.onConfigurationChanged(newConfig);
+            renderBest();
         }
 
         @Override

@@ -1,5 +1,6 @@
 package com.hyperos3.focusrestore;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 /** Package-private parser for HyperOS Dynamic Island payloads. */
@@ -100,6 +101,79 @@ final class IslandPayloadParser {
             return null;
         }
         return null;
+    }
+
+    static String findPictureReference(String payload, boolean dark) {
+        if (!InputLimits.isPayloadAllowed(payload) || payload.trim().length() == 0) return null;
+        try {
+            JSONObject root = new JSONObject(payload);
+            JSONObject v2 = root.optJSONObject("param_v2");
+            if (v2 == null) v2 = root;
+            String result = findKnownPictureReference(v2, dark);
+            if (result == null && dark) result = findKnownPictureReference(v2, false);
+            return result;
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private static String findKnownPictureReference(JSONObject v2, boolean dark) {
+        JSONObject island = firstObject(v2, "param_island", "paramIsland");
+        if (island != null) {
+            String result = findPictureInNode(island.opt("smallIslandArea"), dark, 0, false);
+            if (result != null) return result;
+            result = findPictureInNode(island.opt("bigIslandArea"), dark, 0, false);
+            if (result != null) return result;
+        }
+        String[] templateKeys = {"baseInfo", "highlightInfo", "highlightInfoV3", "chatInfo",
+                "iconTextInfo", "animTextInfo", "bannerPicInfo", "hintInfo"};
+        for (String key : templateKeys) {
+            String result = findPictureInNode(v2.opt(key), dark, 0, false);
+            if (result != null) return result;
+        }
+        return findPictureInNode(v2, dark, 0, false);
+    }
+
+    private static String findPictureInNode(Object value, boolean dark, int depth,
+                                            boolean allowAnimationSource) {
+        if (value == null || value == JSONObject.NULL || depth > 8) return null;
+        if (value instanceof JSONArray) {
+            JSONArray array = (JSONArray) value;
+            for (int index = 0; index < array.length(); index++) {
+                String result = findPictureInNode(array.opt(index), dark, depth + 1,
+                        allowAnimationSource);
+                if (result != null) return result;
+            }
+            return null;
+        }
+        if (!(value instanceof JSONObject)) return null;
+        JSONObject object = (JSONObject) value;
+        String[] directKeys = dark
+                ? new String[]{"picDark", "picFunctionDark", "picProfileDark",
+                "iconDark", "tickerPicDark"}
+                : new String[]{"pic", "picFunction", "picProfile", "icon", "tickerPic"};
+        for (String key : directKeys) {
+            String result = cleanPictureReference(object.opt(key));
+            if (result != null) return result;
+        }
+        if (allowAnimationSource && !dark) {
+            String result = cleanPictureReference(object.opt("src"));
+            if (result != null) return result;
+        }
+        String[] nestedKeys = {"picInfo", "combinePicInfo", "imageTextInfoLeft",
+                "imageTextInfoRight", "animIconInfo"};
+        for (String key : nestedKeys) {
+            String result = findPictureInNode(object.opt(key), dark, depth + 1,
+                    "animIconInfo".equals(key));
+            if (result != null) return result;
+        }
+        return null;
+    }
+
+    private static String cleanPictureReference(Object value) {
+        if (value == null || value == JSONObject.NULL) return null;
+        String reference = String.valueOf(value).trim();
+        return reference.startsWith("miui.focus.pic_") ? reference : null;
     }
 
     static final class ParsedText {
