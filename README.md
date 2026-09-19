@@ -24,7 +24,7 @@ GitHub：<https://github.com/ImKani/HyperOS3FocusRestore>
 
 ## 当前版本
 
-版本：`0.13.9`
+版本：`0.13.10`
 
 本版本新增 HyperOS 4 手动适配，并保留原 HyperOS 3 Hook：
 
@@ -133,15 +133,15 @@ Android Gradle Plugin 8.7.3
 构建 debug 或 release 变体，APK 输出路径：
 
 ```text
-app/build/outputs/apk/debug/HyperOS3FocusRestore-0.13.9-debug.apk
-app/build/outputs/apk/release/HyperOS3FocusRestore-0.13.9-release.apk
+app/build/outputs/apk/debug/HyperOS3FocusRestore-0.13.10-debug.apk
+app/build/outputs/apk/release/HyperOS3FocusRestore-0.13.10-release.apk
 ```
 
 模块不声明网络、存储、后台服务等额外权限。关于项目按钮通过系统浏览器打开外部链接，网络访问由浏览器处理。
 
 ## 安装和作用域
 
-1. 安装 `HyperOS3FocusRestore-0.13.9-release.apk` 或 `HyperOS3FocusRestore-0.13.9-debug.apk`。
+1. 安装 `HyperOS3FocusRestore-0.13.10-release.apk` 或 `HyperOS3FocusRestore-0.13.10-debug.apk`。
 2. 在 LSPosed 中启用本模块。
 3. 作用域应只有：
 

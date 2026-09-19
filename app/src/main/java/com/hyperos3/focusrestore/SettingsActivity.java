@@ -20,6 +20,7 @@ import android.view.Window;
 import android.view.WindowInsets;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ListView;
@@ -141,19 +142,45 @@ public final class SettingsActivity extends Activity {
     }
 
     private View createContent() {
-        LinearLayout outer = new LinearLayout(this);
-        outer.setOrientation(LinearLayout.VERTICAL);
-        outer.setBackgroundColor(COLOR_BACKGROUND);
-        if (Build.VERSION.SDK_INT >= 29) outer.setForceDarkAllowed(false);
-        applyRootInsets(outer);
-        View topBar = createTopBar();
-        outer.addView(topBar, new LinearLayout.LayoutParams(-1, -2));
+        FrameLayout root = new FrameLayout(this);
+        root.setBackgroundColor(COLOR_BACKGROUND);
+        if (Build.VERSION.SDK_INT >= 29) root.setForceDarkAllowed(false);
+
+        LinearLayout shell = new LinearLayout(this);
+        shell.setOrientation(LinearLayout.VERTICAL);
+        root.addView(shell, new FrameLayout.LayoutParams(-1, -1));
+
+        applyTopInsets(shell);
+        shell.addView(createTopBar(), new LinearLayout.LayoutParams(-1, -2));
         pageContainer = new LinearLayout(this);
         pageContainer.setOrientation(LinearLayout.VERTICAL);
-        outer.addView(pageContainer, new LinearLayout.LayoutParams(-1, 0, 1f));
+        shell.addView(pageContainer, new LinearLayout.LayoutParams(-1, 0, 1f));
         bottomNav = (LinearLayout) createBottomNavigation();
-        outer.addView(bottomNav, new LinearLayout.LayoutParams(-1, -2));
-        return outer;
+        applyBottomInsets(bottomNav);
+        shell.addView(bottomNav, new LinearLayout.LayoutParams(-1, -2));
+
+        saveButton = createSaveButton();
+        FrameLayout.LayoutParams saveParams = new FrameLayout.LayoutParams(-2, -2,
+                Gravity.BOTTOM | Gravity.END);
+        saveParams.setMargins(0, 0, dp(16), dp(88));
+        root.addView(saveButton, saveParams);
+        return root;
+    }
+
+    private Button createSaveButton() {
+        Button button = new Button(this);
+        button.setText("保存");
+        button.setTextSize(14);
+        button.setTextColor(Color.WHITE);
+        button.setBackground(roundedBg(COLOR_PRIMARY, 12));
+        button.setAllCaps(false);
+        button.setMinWidth(dp(72));
+        button.setMinHeight(dp(48));
+        button.setPadding(dp(16), 0, dp(16), 0);
+        button.setElevation(dp(6));
+        button.setContentDescription("保存设置");
+        button.setOnClickListener(v -> saveSettings());
+        return button;
     }
 
     private View createTopBar() {
@@ -175,19 +202,6 @@ public final class SettingsActivity extends Activity {
         pageTitle = text("设置", 12, COLOR_TEXT_SECONDARY);
         pageTitle.setGravity(Gravity.CENTER);
         bar.addView(pageTitle, new LinearLayout.LayoutParams(0, -1, 1f));
-        saveButton = new Button(this);
-        saveButton.setText("保存");
-        saveButton.setTextSize(14);
-        saveButton.setTextColor(Color.WHITE);
-        saveButton.setBackground(roundedBg(COLOR_PRIMARY, 28));
-        saveButton.setAllCaps(false);
-        saveButton.setMinWidth(dp(72));
-        saveButton.setMinHeight(dp(48));
-        saveButton.setPadding(dp(16), 0, dp(16), 0);
-        saveButton.setOnClickListener(v -> saveSettings());
-        LinearLayout.LayoutParams saveParams = new LinearLayout.LayoutParams(-2, -2);
-        saveParams.gravity = Gravity.CENTER_VERTICAL;
-        bar.addView(saveButton, saveParams);
         return bar;
     }
 
@@ -206,11 +220,14 @@ public final class SettingsActivity extends Activity {
             item.setTextSize(14);
             item.setAllCaps(false);
             item.setMinHeight(dp(48));
+            item.setMinWidth(dp(48));
             item.setPadding(dp(8), 0, dp(8), 0);
+            item.setElevation(0);
             item.setOnClickListener(v -> showPage(page));
             navButtons[i] = item;
             LinearLayout.LayoutParams itemParams = new LinearLayout.LayoutParams(0, -2, 1f);
             itemParams.gravity = Gravity.CENTER_VERTICAL;
+            itemParams.setMargins(dp(4), dp(4), dp(4), dp(4));
             nav.addView(item, itemParams);
         }
         return nav;
@@ -415,7 +432,7 @@ public final class SettingsActivity extends Activity {
         github.setText("打开 GitHub");
         github.setAllCaps(false);
         github.setTextColor(Color.WHITE);
-        github.setBackground(roundedBg(COLOR_PRIMARY, 10));
+        github.setBackground(roundedBg(COLOR_PRIMARY, 12));
         github.setMinHeight(dp(48));
         github.setPadding(dp(16), 0, dp(16), 0);
         github.setOnClickListener(v -> openExternalLink("https://github.com/ImKani/HyperOS3FocusRestore"));
@@ -523,7 +540,7 @@ public final class SettingsActivity extends Activity {
         forcePackagesButton.setEnabled(enabled);
         forcePackagesButton.setText(forcePackagesLabel());
         forcePackagesButton.setTextColor(enabled ? COLOR_PRIMARY : Color.rgb(170, 174, 180));
-        forcePackagesButton.setBackground(roundedBg(enabled ? COLOR_PRIMARY_LIGHT : Color.rgb(232, 234, 237), 10));
+        forcePackagesButton.setBackground(roundedBg(enabled ? COLOR_PRIMARY_LIGHT : COLOR_SURFACE_HIGH, 12));
     }
 
     private void showForcePackagesDialog() {
@@ -582,15 +599,15 @@ public final class SettingsActivity extends Activity {
         refresh.setText("刷新");
         refresh.setAllCaps(false);
         refresh.setTextColor(COLOR_PRIMARY);
-        refresh.setBackground(roundedBg(COLOR_PRIMARY_LIGHT, 28));
+        refresh.setBackground(roundedBg(COLOR_PRIMARY_LIGHT, 12));
         refresh.setMinHeight(dp(48));
         refresh.setOnClickListener(v -> loadDialogApps());
         options.addView(refresh, new LinearLayout.LayoutParams(-2, -2));
         root.addView(options, matchWrap(dp(4)));
 
         dialogListView = new ListView(this);
-        dialogListView.setDivider(null);
-        dialogListView.setDividerHeight(0);
+        dialogListView.setDivider(new ColorDrawable(COLOR_SURFACE_HIGH));
+        dialogListView.setDividerHeight(dp(6));
         dialogAdapter = new ForcePackageAdapter();
         dialogListView.setAdapter(dialogAdapter);
         dialogListView.setVisibility(View.GONE);
@@ -613,7 +630,7 @@ public final class SettingsActivity extends Activity {
         buttons.addView(cancel, new LinearLayout.LayoutParams(dp(76), dp(48)));
         Button done = new Button(this);
         done.setText("完成"); done.setAllCaps(false); done.setTextColor(Color.WHITE);
-        done.setBackground(roundedBg(COLOR_PRIMARY, 28));
+        done.setBackground(roundedBg(COLOR_PRIMARY, 12));
         done.setOnClickListener(v -> { pendingForcePackages = new HashSet<>(dialogSelectedPackages); updateForcePackagesButton(); markPending(); dialog.dismiss(); });
         buttons.addView(done, new LinearLayout.LayoutParams(dp(76), dp(48)));
         root.addView(buttons, matchWrap(0));
@@ -756,8 +773,13 @@ public final class SettingsActivity extends Activity {
             name.setText(label);
             packageName.setText(app.packageName);
             boolean selected = dialogSelectedPackages.contains(app.packageName);
-            row.setBackground(roundedBg(selected ? Color.rgb(210, 229, 255) : Color.WHITE, 10));
+            row.setBackground(roundedBg(selected ? COLOR_PRIMARY_LIGHT : COLOR_SURFACE, 12));
+            row.setElevation(0);
             accent.setBackgroundColor(selected ? COLOR_PRIMARY : Color.TRANSPARENT);
+            android.view.ViewGroup.LayoutParams params = row.getLayoutParams();
+            if (params instanceof LinearLayout.LayoutParams) {
+                ((LinearLayout.LayoutParams) params).setMargins(0, dp(3), 0, dp(3));
+            }
             return row;
         }
     }
@@ -913,7 +935,7 @@ public final class SettingsActivity extends Activity {
         button.setSelected(selected);
         button.setContentDescription(button.getText() + (selected ? "，已选择" : "，未选择"));
         button.setTextColor(selected ? 0xFF041E2F : COLOR_TEXT_SECONDARY);
-        button.setBackground(roundedBg(selected ? COLOR_PRIMARY_LIGHT : COLOR_SURFACE, 28));
+        button.setBackground(roundedBg(selected ? COLOR_PRIMARY_LIGHT : COLOR_SURFACE, 12));
     }
 
     private void updateNavButtons(int selected) {
@@ -922,7 +944,7 @@ public final class SettingsActivity extends Activity {
             Button button = navButtons[i];
             boolean active = i == selected;
             button.setSelected(active);
-            button.setBackground(roundedBg(active ? COLOR_PRIMARY_LIGHT : COLOR_SURFACE_HIGH, 28));
+            button.setBackground(roundedBg(active ? COLOR_PRIMARY_LIGHT : COLOR_SURFACE_HIGH, 12));
             button.setTextColor(active ? 0xFF041E2F : COLOR_TEXT_SECONDARY);
         }
     }
