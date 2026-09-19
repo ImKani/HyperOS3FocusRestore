@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="48dp" android:height="48dp" android:viewportWidth="1024" android:viewportHeight="1024">
-    <path android:fillColor="#C7DCEB" android:pathData="M180,0 L844,0 Q1024,0,1024,180 L1024,844 Q1024,1024,844,1024 L180,1024 Q0,1024,0,844 L0,180 Q0,0,180,0 Z" />
+    <path android:fillColor="@color/ic_launcher_background" android:pathData="M180,0 L844,0 Q1024,0,1024,180 L1024,844 Q1024,1024,844,1024 L180,1024 Q0,1024,0,844 L0,180 Q0,0,180,0 Z" />
     <path android:strokeColor="#1A2E3D" android:strokeWidth="40" android:strokeLineCap="round" android:pathData="M376,462 L376,432 A56,56,0,0,1,432,376 L462,376" />
     <path android:strokeColor="#1A2E3D" android:strokeWidth="40" android:strokeLineCap="round" android:pathData="M648,462 L648,432 A56,56,0,0,0,592,376 L562,376" />
     <path android:strokeColor="#1A2E3D" android:strokeWidth="40" android:strokeLineCap="round" android:pathData="M648,562 L648,592 A56,56,0,0,1,592,648 L562,648" />

@@ -24,11 +24,11 @@ GitHub：<https://github.com/ImKani/HyperOS3FocusRestore>
 
 ## 当前版本
 
-版本：`0.13.19`
+版本：`0.13.20`
 
 本版本新增 HyperOS 4 手动适配，并保留原 HyperOS 3 Hook：
 
-- 由用户手动选择 HyperOS 3 或 HyperOS 4，默认 HyperOS 3；保存后重启 SystemUI 或设备生效
+- 由用户手动选择 HyperOS 3 或 HyperOS 4，默认 HyperOS 3；变更自动保存，重启 SystemUI 或设备后生效
 - 设置会同步到 Direct Boot 可读的设备加密存储，确保开机解锁前启动的 SystemUI 能读取手动选择的模式
 - SystemUI 在 `Application.attach()` 阶段直接使用可用的 base Context 查询设置，避免 Application Context 尚未建立时误判设置不可用
 - 不自动检测系统版本，不在 Hook 缺失时自动切换或回退
@@ -74,7 +74,7 @@ Hook 入口：com.hyperos3.focusrestore.HyperOS3FocusRestoreHook
 
 ## 设置项说明
 
-模块设置页从 LSPosed 模块详情进入，不显示桌面图标。修改设置后需保存，并手动重启 SystemUI 或设备才能完整生效。
+模块设置页从 LSPosed 模块详情进入，不显示桌面图标。设置变更会立即保存并显示 Toast 提示，之后需手动重启 SystemUI 或设备才能完整生效。
 
 主要设置项：
 
@@ -95,7 +95,7 @@ Hook 入口：com.hyperos3.focusrestore.HyperOS3FocusRestoreHook
 
 测试发送器已经归档到 `legacy/testsender`，不参与主模块构建和 LSPosed 作用域。它独立安装后提供焦点通知、超级岛模板和清理测试通知，便于点击后立即返回桌面观察 SystemUI 显示。
 
-设置修改后必须点击保存，并由用户手动重启 SystemUI 或设备。
+设置修改后会立即保存，并由用户手动重启 SystemUI 或设备。
 
 ## 设置页风险提示
 
@@ -106,7 +106,7 @@ Hook 入口：com.hyperos3.focusrestore.HyperOS3FocusRestoreHook
 - 点击后的系统通知逻辑可能无法正常处理。
 - 模块通过 LSPosed Hook 介入 SystemUI，存在 ROM 版本差异、系统崩溃、显示异常、功能失效和数据丢失风险。
 - 超级岛转换只处理通知实际提供的协议内容，不负责隐藏系统灵动舞台；需要隐藏时应使用其他工具。
-- 修改设置后需要保存，并重启 SystemUI 或设备才能完整生效。
+- 修改设置后会立即保存；收到 Toast 提示后，重启 SystemUI 或设备才能完整生效。
 
 ## 日志判读
 
@@ -150,7 +150,7 @@ app/build/outputs/apk/release/HyperOS3FocusRestore-0.13.10-release.apk
 com.android.systemui
 ```
 
-4. 从 LSPosed 模块详情进入设置页，选择 HyperOS 3 或 HyperOS 4 并保存；默认 HyperOS 3。
+4. 从 LSPosed 模块详情进入设置页，选择 HyperOS 3 或 HyperOS 4；变更会自动保存，默认 HyperOS 3。
 5. 第一轮测试关闭 KernelSU 的动态岛属性模块。
 6. 重启设备，确保 SystemUI 的静态功能字段和手动选择的 Hook 在启动阶段初始化。
 7. 触发以前会显示超级岛或焦点通知的通知。

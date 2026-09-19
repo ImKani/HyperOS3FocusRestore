@@ -6,6 +6,7 @@ import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
+import android.content.res.Configuration;
 import android.content.pm.ApplicationInfo;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
@@ -31,6 +32,7 @@ import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.Switch;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import android.text.Editable;
 import android.text.TextWatcher;
@@ -66,27 +68,23 @@ public final class SettingsActivity extends Activity {
     private SharedPreferences preferences;
     private FocusRestoreSettings settings;
     private LinearLayout pageContainer;
-    private TextView pageTitle;
-    private TextView statusHint;
-    private ImageButton saveButton;
     private LinearLayout bottomNav;
     private ImageButton[] navButtons;
     private int currentPage;
 
-    private static final int COLOR_PRIMARY = 0xFF3E5F7A;
-    private static final int COLOR_SAVE_SAVED = 0xFF7891A4;
-    private static final int COLOR_PRIMARY_LIGHT = 0xFFC7DCEB;
-    private static final int COLOR_BACKGROUND = 0xFFF2F5F8;
-    private static final int COLOR_TEXT_PRIMARY = 0xFF191C1E;
-    private static final int COLOR_TEXT_SECONDARY = 0xFF42474B;
-    private static final int COLOR_DIVIDER = 0xFFC2C7CB;
-    private static final int COLOR_INPUT_BACKGROUND = 0xFFE2E8ED;
-    private static final int COLOR_SURFACE = 0xFFF7FAFC;
-    private static final int COLOR_SURFACE_HIGH = 0xFFE9EEF2;
-    private static final int COLOR_ERROR = 0xFFBA1A1A;
-    private boolean dirty;
-    private String saveMessage;
+    private int COLOR_PRIMARY = 0xFF3E5F7A;
+    private int COLOR_PRIMARY_LIGHT = 0xFFC7DCEB;
+    private int COLOR_BACKGROUND = 0xFFF2F5F8;
+    private int COLOR_TEXT_PRIMARY = 0xFF191C1E;
+    private int COLOR_TEXT_SECONDARY = 0xFF42474B;
+    private int COLOR_DIVIDER = 0xFFC2C7CB;
+    private int COLOR_INPUT_BACKGROUND = 0xFFE2E8ED;
+    private int COLOR_SURFACE = 0xFFF7FAFC;
+    private int COLOR_SURFACE_HIGH = 0xFFE9EEF2;
+    private int COLOR_NAV_SELECTED = 0xFFD6E4EE;
+    private boolean nightMode;
     private Dialog activeDialog;
+    private Toast feedbackToast;
     private ScrollView pageScroll;
     private final int[] scrollPositions = new int[2];
 
@@ -130,8 +128,13 @@ public final class SettingsActivity extends Activity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        boolean systemNight = (getResources().getConfiguration().uiMode
+                & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+        setTheme(systemNight ? android.R.style.Theme_Material_NoActionBar
+                : android.R.style.Theme_Material_Light_NoActionBar);
         super.onCreate(savedInstanceState);
-        configureLightSystemBars(getWindow());
+        applySystemPalette();
+        configureSystemBars(getWindow());
         preferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         SharedPreferences hookPreferences = FocusRestoreSettings.hookPreferences(this);
         if (!FocusRestoreSettings.hasHookSettings(hookPreferences)) {
@@ -144,6 +147,22 @@ public final class SettingsActivity extends Activity {
         loadSettings();
         if (savedInstanceState != null) restorePendingState(savedInstanceState);
         showPage(currentPage);
+    }
+
+    private void applySystemPalette() {
+        nightMode = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
+                == Configuration.UI_MODE_NIGHT_YES;
+        if (!nightMode) return;
+        COLOR_PRIMARY = 0xFF52758C;
+        COLOR_PRIMARY_LIGHT = 0xFF2D4657;
+        COLOR_BACKGROUND = 0xFF101417;
+        COLOR_TEXT_PRIMARY = 0xFFE5E9EC;
+        COLOR_TEXT_SECONDARY = 0xFFB8C1C7;
+        COLOR_DIVIDER = 0xFF495057;
+        COLOR_INPUT_BACKGROUND = 0xFF242B30;
+        COLOR_SURFACE = 0xFF181D21;
+        COLOR_SURFACE_HIGH = 0xFF20272C;
+        COLOR_NAV_SELECTED = 0xFF304B5D;
     }
 
     private View createContent() {
@@ -163,30 +182,7 @@ public final class SettingsActivity extends Activity {
         bottomNav = (LinearLayout) createBottomNavigation();
         applyBottomInsets(bottomNav);
         shell.addView(bottomNav, new LinearLayout.LayoutParams(-1, -2));
-
-        saveButton = createSaveButton();
-        FrameLayout.LayoutParams saveParams = new FrameLayout.LayoutParams(dp(64), dp(48),
-                Gravity.BOTTOM | Gravity.END);
-        saveParams.setMargins(0, 0, dp(16), dp(88));
-        root.addView(saveButton, saveParams);
         return root;
-    }
-
-    private ImageButton createSaveButton() {
-        ImageButton button = new ImageButton(this);
-        button.setContentDescription("设置已保存");
-        button.setBackground(roundedBg(COLOR_SAVE_SAVED, 12));
-        button.setImageResource(R.drawable.save_saved);
-        button.setScaleType(ImageView.ScaleType.CENTER);
-        button.setMinimumWidth(dp(64));
-        button.setMinimumHeight(dp(48));
-        button.setPadding(0, 0, 0, 0);
-        button.setElevation(dp(6));
-        if (Build.VERSION.SDK_INT >= 21) button.setStateListAnimator(null);
-        button.setTranslationZ(0f);
-        button.setContentDescription("保存设置");
-        button.setOnClickListener(v -> saveSettings());
-        return button;
     }
 
     private View createTopBar() {
@@ -206,9 +202,6 @@ public final class SettingsActivity extends Activity {
         LinearLayout.LayoutParams brandParams = new LinearLayout.LayoutParams(0, -2, 1f);
         brandParams.leftMargin = dp(10);
         bar.addView(brand, brandParams);
-        pageTitle = text("设置", 12, COLOR_TEXT_SECONDARY);
-        pageTitle.setGravity(Gravity.CENTER);
-        bar.addView(pageTitle, new LinearLayout.LayoutParams(0, -1, 1f));
         return bar;
     }
 
@@ -217,11 +210,12 @@ public final class SettingsActivity extends Activity {
         nav.setMinimumHeight(dp(72));
         nav.setGravity(Gravity.CENTER);
         nav.setBackgroundColor(COLOR_BACKGROUND);
-        nav.setPadding(dp(8), dp(8), dp(8), dp(8));
+        nav.setPadding(0, dp(8), 0, dp(8));
         String[] names = {"主页", "高级"};
         navButtons = new ImageButton[names.length];
         for (int i = 0; i < names.length; i++) {
             final int page = i;
+            FrameLayout segment = new FrameLayout(this);
             ImageButton item = new ImageButton(this);
             item.setContentDescription(names[i]);
             item.setMinimumHeight(dp(44));
@@ -233,10 +227,8 @@ public final class SettingsActivity extends Activity {
             flattenButton(item);
             item.setOnClickListener(v -> showPage(page));
             navButtons[i] = item;
-            LinearLayout.LayoutParams itemParams = new LinearLayout.LayoutParams(dp(68), dp(44));
-            itemParams.gravity = Gravity.CENTER_VERTICAL;
-            itemParams.setMargins(dp(18), 0, dp(18), 0);
-            nav.addView(item, itemParams);
+            segment.addView(item, new FrameLayout.LayoutParams(dp(68), dp(44), Gravity.CENTER));
+            nav.addView(segment, new LinearLayout.LayoutParams(0, dp(56), 1f));
         }
         return nav;
     }
@@ -246,9 +238,6 @@ public final class SettingsActivity extends Activity {
         if (pageScroll != null) scrollPositions[currentPage] = pageScroll.getScrollY();
         currentPage = page;
         pageContainer.removeAllViews();
-        pageTitle.setText(page == 0 ? "主页" : "高级");
-        saveButton.setVisibility(View.VISIBLE);
-        renderPendingStatus();
         updateNavButtons(page);
         ScrollView scroll = new ScrollView(this);
         pageScroll = scroll;
@@ -260,7 +249,6 @@ public final class SettingsActivity extends Activity {
         else buildAdvancedPage(content);
         scroll.addView(content);
         pageContainer.addView(scroll, new LinearLayout.LayoutParams(-1, -1));
-        renderPendingStatus();
         scroll.post(() -> scroll.scrollTo(0, scrollPositions[page]));
     }
 
@@ -288,12 +276,6 @@ public final class SettingsActivity extends Activity {
         control.setPadding(0, 0, 0, 0);
         styleSwitch(control);
         return control;
-    }
-
-    private void addStatus(LinearLayout root) {
-        statusHint = text("修改后点击顶部保存，再重启 SystemUI 或设备生效。", 14, COLOR_TEXT_SECONDARY);
-        statusHint.setPadding(dp(4), dp(4), dp(4), dp(8));
-        root.addView(statusHint, matchWrap(dp(8)));
     }
 
     private void buildSettingsPage(LinearLayout root) {
@@ -352,7 +334,6 @@ public final class SettingsActivity extends Activity {
         compatPanel.addView(marqueeBounceSwitch, matchWrap(dp(4)));
         compatPanel.addView(compatRetrySwitch, matchWrap(0));
         root.addView(compatPanel, matchWrap(dp(12)));
-        addStatus(root);
 
         manualWidthSwitch.setChecked(pendingManual);
         widthSeekBar.setProgress(pendingWidthDp - MIN_WIDTH_DP);
@@ -410,7 +391,6 @@ public final class SettingsActivity extends Activity {
             disableIslandFeatureCacheSwitch.setChecked(pendingDisableIslandFeatureCache);
         }
         buildAboutSections(root);
-        addStatus(root);
         installSettingsListeners();
     }
 
@@ -457,8 +437,6 @@ public final class SettingsActivity extends Activity {
         captureCurrentInputs();
         if (pageScroll != null) scrollPositions[currentPage] = pageScroll.getScrollY();
         outState.putInt("m3.page", currentPage);
-        outState.putBoolean("m3.dirty", dirty);
-        outState.putString("m3.saveMessage", saveMessage);
         outState.putInt("m3.mode", pendingHookMode);
         outState.putBoolean("m3.manual", pendingManual);
         outState.putInt("m3.width", pendingWidthDp);
@@ -479,8 +457,6 @@ public final class SettingsActivity extends Activity {
 
     private void restorePendingState(Bundle state) {
         currentPage = Math.max(0, Math.min(1, state.getInt("m3.page", 0)));
-        dirty = state.getBoolean("m3.dirty", false);
-        saveMessage = state.getString("m3.saveMessage");
         pendingHookMode = state.getInt("m3.mode", pendingHookMode);
         pendingManual = state.getBoolean("m3.manual", pendingManual);
         pendingWidthDp = state.getInt("m3.width", pendingWidthDp);
@@ -499,19 +475,6 @@ public final class SettingsActivity extends Activity {
         if (packages != null) pendingForcePackages = new HashSet<>(packages);
     }
 
-    private void renderPendingStatus() {
-        if (statusHint == null) return;
-        statusHint.setText(dirty ? "有未保存的修改，请点击顶部“保存”。"
-                : (saveMessage == null ? "修改后点击顶部保存，再重启 SystemUI 或设备生效。" : saveMessage));
-        statusHint.setTextColor(dirty ? COLOR_PRIMARY
-                : (saveMessage != null && saveMessage.contains("失败") ? COLOR_ERROR : COLOR_TEXT_SECONDARY));
-        if (saveButton != null) {
-            saveButton.setBackground(roundedBg(dirty ? COLOR_PRIMARY : COLOR_SAVE_SAVED, 12));
-            saveButton.setImageResource(dirty ? R.drawable.save_pending : R.drawable.save_saved);
-            saveButton.setContentDescription(dirty ? "保存未保存的设置" : "设置已保存");
-        }
-    }
-
     private void installSettingsListeners() {
         if (manualWidthSwitch != null) manualWidthSwitch.setOnCheckedChangeListener((b, checked) -> {
             pendingManual = checked; updateWidthControls(); markPending();
@@ -520,19 +483,19 @@ public final class SettingsActivity extends Activity {
             public void onProgressChanged(SeekBar s, int p, boolean user) {
                 int w = MIN_WIDTH_DP + p;
                 if (widthValue != null) widthValue.setText(w + " dp");
-                if (user) { pendingWidthDp = w; markPending(); }
+                if (user) pendingWidthDp = w;
             }
             public void onStartTrackingTouch(SeekBar s) { }
-            public void onStopTrackingTouch(SeekBar s) { }
+            public void onStopTrackingTouch(SeekBar s) { markPending(); }
         });
         if (delaySeekBar != null) delaySeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             public void onProgressChanged(SeekBar s, int p, boolean user) {
                 int d = p * 100;
                 if (delayValue != null) delayValue.setText(String.format(Locale.US, "%.1f 秒", d / 1000f));
-                if (user) { pendingDelayMs = d; markPending(); }
+                if (user) pendingDelayMs = d;
             }
             public void onStartTrackingTouch(SeekBar s) { }
-            public void onStopTrackingTouch(SeekBar s) { }
+            public void onStopTrackingTouch(SeekBar s) { markPending(); }
         });
         if (compatRetrySwitch != null) compatRetrySwitch.setOnCheckedChangeListener((b, c) -> { pendingCompatRetry = c; markPending(); });
         if (marqueeBounceSwitch != null) marqueeBounceSwitch.setOnCheckedChangeListener((b, c) -> { pendingMarqueeBounce = c; markPending(); });
@@ -894,20 +857,19 @@ public final class SettingsActivity extends Activity {
         boolean hookSaved = settings.save(FocusRestoreSettings.hookPreferences(this));
         android.util.Log.i(TAG, "settings saved credential=" + credentialSaved
                 + " deviceProtected=" + hookSaved + " " + settings.describe());
-        if (credentialSaved && hookSaved) {
-            dirty = false;
-            saveMessage = "设置已保存。请重启 SystemUI 或设备后生效。";
-        } else {
-            dirty = true;
-            saveMessage = "设置保存失败，请重试并检查存储状态。";
-        }
-        renderPendingStatus();
+        showFeedback(credentialSaved && hookSaved
+                ? "设置已保存，请重启系统界面生效"
+                : "设置保存失败，请检查存储状态后重试");
     }
 
     private void markPending() {
-        dirty = true;
-        saveMessage = null;
-        renderPendingStatus();
+        saveSettings();
+    }
+
+    private void showFeedback(String message) {
+        if (feedbackToast != null) feedbackToast.cancel();
+        feedbackToast = Toast.makeText(this, message, Toast.LENGTH_SHORT);
+        feedbackToast.show();
     }
 
     private LinearLayout valueRow(String label, String value) {
@@ -1005,8 +967,10 @@ public final class SettingsActivity extends Activity {
             int icon = i == 0
                     ? (active ? R.drawable.nav_home_on : R.drawable.nav_home_off)
                     : (active ? R.drawable.nav_advanced_on : R.drawable.nav_advanced_off);
-            button.setBackground(roundedBg(active ? 0xFFD6E4EE : Color.TRANSPARENT, 22));
+            button.setBackground(roundedBg(active ? COLOR_NAV_SELECTED : Color.TRANSPARENT, 22));
             button.setImageResource(icon);
+            button.setImageTintList(ColorStateList.valueOf(
+                    active ? COLOR_TEXT_PRIMARY : COLOR_TEXT_SECONDARY));
             button.setContentDescription((i == 0 ? "主页" : "高级")
                     + (active ? "，已选择" : "，未选择"));
             flattenButton(button);
@@ -1061,10 +1025,10 @@ public final class SettingsActivity extends Activity {
         view.requestApplyInsets();
     }
 
-    private void styleSwitch(Switch s) { if (Build.VERSION.SDK_INT >= 21) { int[][] states = {new int[]{android.R.attr.state_checked}, new int[]{}}; s.setThumbTintList(new ColorStateList(states, new int[]{Color.WHITE, Color.rgb(189,193,198)})); s.setTrackTintList(new ColorStateList(states, new int[]{COLOR_PRIMARY, Color.rgb(218,220,224)})); } }
+    private void styleSwitch(Switch s) { if (Build.VERSION.SDK_INT >= 21) { int[][] states = {new int[]{android.R.attr.state_checked}, new int[]{}}; int offThumb = nightMode ? 0xFF8A949A : Color.rgb(189,193,198); int offTrack = nightMode ? 0xFF3A4248 : Color.rgb(218,220,224); s.setThumbTintList(new ColorStateList(states, new int[]{Color.WHITE, offThumb})); s.setTrackTintList(new ColorStateList(states, new int[]{COLOR_PRIMARY, offTrack})); } }
     private void styleSeekBar(SeekBar s) { if (Build.VERSION.SDK_INT >= 21) { s.setProgressTintList(ColorStateList.valueOf(COLOR_PRIMARY)); s.setThumbTintList(ColorStateList.valueOf(COLOR_PRIMARY)); } }
-    private void openExternalLink(String url) { try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); } catch (ActivityNotFoundException e) { if (statusHint != null) statusHint.setText("设备没有可用的浏览器，无法打开链接。"); } }
-    private void configureLightSystemBars(Window w) { w.setStatusBarColor(COLOR_BACKGROUND); w.setNavigationBarColor(COLOR_BACKGROUND); if (Build.VERSION.SDK_INT >= 23) { int f = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR; if (Build.VERSION.SDK_INT >= 26) f |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR; w.getDecorView().setSystemUiVisibility(f); } }
+    private void openExternalLink(String url) { try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); } catch (ActivityNotFoundException e) { showFeedback("设备没有可用的浏览器，无法打开链接"); } }
+    private void configureSystemBars(Window w) { w.setStatusBarColor(COLOR_BACKGROUND); w.setNavigationBarColor(COLOR_BACKGROUND); if (Build.VERSION.SDK_INT >= 23) { int f = 0; if (!nightMode) { f = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR; if (Build.VERSION.SDK_INT >= 26) f |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR; } w.getDecorView().setSystemUiVisibility(f); } }
     private TextView text(String value, int size, int color) { TextView v = new TextView(this); v.setText(value); v.setTextSize(size); v.setTextColor(color); return v; }
     private LinearLayout.LayoutParams matchWrap(int margin) { LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, -2); p.bottomMargin = margin; return p; }
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
