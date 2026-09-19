@@ -196,8 +196,9 @@ public final class SettingsActivity extends Activity {
         ImageView icon = new ImageView(this);
         Drawable appIcon = getApplicationInfo().loadIcon(getPackageManager());
         icon.setImageDrawable(appIcon);
-        bar.addView(icon, new LinearLayout.LayoutParams(dp(36), dp(36)));
-        TextView brand = text("FocusRestore", 22, COLOR_TEXT_PRIMARY);
+        icon.setElevation(0);
+        bar.addView(icon, new LinearLayout.LayoutParams(dp(30), dp(30)));
+        TextView brand = text("FocusRestore", 19, COLOR_TEXT_PRIMARY);
         brand.setTypeface(brand.getTypeface(), 1);
         LinearLayout.LayoutParams brandParams = new LinearLayout.LayoutParams(0, -2, 1f);
         brandParams.leftMargin = dp(10);
@@ -225,6 +226,7 @@ public final class SettingsActivity extends Activity {
             item.setMinHeight(dp(48));
             item.setMinWidth(dp(48));
             item.setPadding(dp(8), 0, dp(8), 0);
+            item.setBackground(roundedBg(COLOR_SURFACE_HIGH, 12));
             item.setElevation(0);
             item.setOnClickListener(v -> showPage(page));
             navButtons[i] = item;
@@ -334,6 +336,7 @@ public final class SettingsActivity extends Activity {
         forcePackagesButton.setText(forcePackagesLabel());
         forcePackagesButton.setAllCaps(false);
         forcePackagesButton.setTextSize(14);
+        forcePackagesButton.setElevation(0);
         forcePackagesButton.setMinHeight(dp(40));
         forcePackagesButton.setOnClickListener(v -> showForcePackagesDialog());
         islandPanel.addView(forcePackagesButton, matchWrap(0));
@@ -440,6 +443,7 @@ public final class SettingsActivity extends Activity {
         button.setTypeface(button.getTypeface(), 1);
         button.setTextColor(foreground);
         button.setBackground(roundedBg(background, 12));
+        button.setElevation(0);
         button.setMinHeight(dp(40));
         button.setPadding(dp(24), 0, dp(24), 0);
         return button;
@@ -610,6 +614,7 @@ public final class SettingsActivity extends Activity {
         clearSearch.setAllCaps(false);
         clearSearch.setTextColor(COLOR_TEXT_SECONDARY);
         clearSearch.setBackgroundColor(Color.TRANSPARENT);
+        clearSearch.setElevation(0);
         clearSearch.setContentDescription("清除搜索内容");
         clearSearch.setVisibility(View.GONE);
         FrameLayout.LayoutParams clearParams = new FrameLayout.LayoutParams(dp(48), dp(48), Gravity.END | Gravity.CENTER_VERTICAL);
@@ -638,6 +643,7 @@ public final class SettingsActivity extends Activity {
         refresh.setAllCaps(false);
         refresh.setTextColor(COLOR_PRIMARY);
         refresh.setBackgroundColor(Color.TRANSPARENT);
+        refresh.setElevation(0);
         refresh.setMinHeight(dp(40));
         refresh.setPadding(dp(16), 0, dp(16), 0);
         refresh.setOnClickListener(v -> loadDialogApps());
@@ -665,7 +671,7 @@ public final class SettingsActivity extends Activity {
         buttons.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
         Button cancel = new Button(this);
         cancel.setText("取消"); cancel.setAllCaps(false); cancel.setTextColor(COLOR_TEXT_SECONDARY);
-        cancel.setBackgroundColor(Color.TRANSPARENT); cancel.setOnClickListener(v -> dialog.dismiss());
+        cancel.setBackgroundColor(Color.TRANSPARENT); cancel.setElevation(0); cancel.setOnClickListener(v -> dialog.dismiss());
         cancel.setMinHeight(dp(40));
         cancel.setPadding(dp(16), 0, dp(16), 0);
         buttons.addView(cancel, new LinearLayout.LayoutParams(-2, dp(40)));
