@@ -43,10 +43,10 @@ final class HookSettings {
         this.allowFocusClick = allowFocusClick;
         this.hideNotificationIcons = hideNotificationIcons;
         this.showFocusDivider = showFocusDivider;
-        this.generalSeparator = generalSeparator == null
-                ? FocusRestoreSettings.DEFAULT_ISLAND_SEPARATOR : generalSeparator;
-        this.sideSeparator = sideSeparator == null
-                ? FocusRestoreSettings.DEFAULT_ISLAND_SEPARATOR : sideSeparator;
+        this.generalSeparator = InputLimits.limitSeparator(generalSeparator == null
+                ? FocusRestoreSettings.DEFAULT_ISLAND_SEPARATOR : generalSeparator);
+        this.sideSeparator = InputLimits.limitSeparator(sideSeparator == null
+                ? FocusRestoreSettings.DEFAULT_ISLAND_SEPARATOR : sideSeparator);
         this.islandForcePackages = immutablePackages(forcePackages);
     }
 
@@ -66,40 +66,61 @@ final class HookSettings {
     }
 
     static HookSettings fromCursor(Cursor cursor) {
-        if (cursor == null || cursor.getColumnCount() < 3) {
+        if (cursor == null || cursor.getColumnCount() <= SettingsContract.MARQUEE_DELAY_MS) {
             throw new IllegalArgumentException("settings cursor requires at least 3 columns");
         }
-        if (cursor.isNull(0) || cursor.isNull(1) || cursor.isNull(2)) {
+        if (cursor.isNull(SettingsContract.LIMIT_TEXT_WIDTH)
+                || cursor.isNull(SettingsContract.TEXT_WIDTH_DP)
+                || cursor.isNull(SettingsContract.MARQUEE_DELAY_MS)) {
             throw new IllegalArgumentException("required settings column is null");
         }
 
         int columnCount = cursor.getColumnCount();
-        boolean limitWidth = cursor.getInt(0) != 0;
-        int widthDp = cursor.getInt(1);
-        int marqueeDelayMs = cursor.getInt(2);
-        boolean compatRetry = columnCount > 3 && !cursor.isNull(3) && cursor.getInt(3) != 0;
-        boolean marqueeBounce = columnCount > 12 && !cursor.isNull(12)
-                 ? cursor.getInt(12) != 0 : FocusRestoreSettings.DEFAULT_MARQUEE_BOUNCE;
-        boolean islandCompat = columnCount > 4 && !cursor.isNull(4) && cursor.getInt(4) != 0;
-        boolean disableIslandProperty = columnCount > 10 && !cursor.isNull(10)
-                ? cursor.getInt(10) != 0 : FocusRestoreSettings.DEFAULT_DISABLE_ISLAND_PROPERTY;
-        boolean disableIslandFeatureCache = columnCount > 11 && !cursor.isNull(11)
-                ? cursor.getInt(11) != 0 : FocusRestoreSettings.DEFAULT_DISABLE_ISLAND_FEATURE_CACHE;
-        String legacySeparator = columnCount > 5 && !cursor.isNull(5)
-                ? cursor.getString(5) : FocusRestoreSettings.DEFAULT_ISLAND_SEPARATOR;
-        boolean allowFocusClick = columnCount > 6 && !cursor.isNull(6) && cursor.getInt(6) != 0;
-        String generalSeparator = columnCount > 7 && !cursor.isNull(7)
-                ? cursor.getString(7) : legacySeparator;
-        String sideSeparator = columnCount > 8 && !cursor.isNull(8)
-                ? cursor.getString(8) : legacySeparator;
-        Set<String> forcePackages = columnCount > 9 && !cursor.isNull(9)
-                ? splitPackages(cursor.getString(9)) : Collections.<String>emptySet();
-        int hookMode = columnCount > 13 && !cursor.isNull(13)
-                ? cursor.getInt(13) : FocusRestoreSettings.DEFAULT_HOOK_MODE;
-        boolean hideNotificationIcons = columnCount > 14 && !cursor.isNull(14)
-                ? cursor.getInt(14) != 0 : FocusRestoreSettings.DEFAULT_HIDE_NOTIFICATION_ICONS;
-        boolean showFocusDivider = columnCount > 15 && !cursor.isNull(15)
-                ? cursor.getInt(15) != 0 : FocusRestoreSettings.DEFAULT_SHOW_FOCUS_DIVIDER;
+        boolean limitWidth = cursor.getInt(SettingsContract.LIMIT_TEXT_WIDTH) != 0;
+        int widthDp = cursor.getInt(SettingsContract.TEXT_WIDTH_DP);
+        int marqueeDelayMs = cursor.getInt(SettingsContract.MARQUEE_DELAY_MS);
+        boolean compatRetry = hasValue(cursor, columnCount, SettingsContract.COMPAT_RETRY)
+                && cursor.getInt(SettingsContract.COMPAT_RETRY) != 0;
+        boolean marqueeBounce = hasValue(cursor, columnCount, SettingsContract.MARQUEE_BOUNCE)
+                ? cursor.getInt(SettingsContract.MARQUEE_BOUNCE) != 0
+                : FocusRestoreSettings.DEFAULT_MARQUEE_BOUNCE;
+        boolean islandCompat = hasValue(cursor, columnCount, SettingsContract.ISLAND_COMPAT)
+                && cursor.getInt(SettingsContract.ISLAND_COMPAT) != 0;
+        boolean disableIslandProperty = hasValue(cursor, columnCount,
+                SettingsContract.DISABLE_ISLAND_PROPERTY)
+                ? cursor.getInt(SettingsContract.DISABLE_ISLAND_PROPERTY) != 0
+                : FocusRestoreSettings.DEFAULT_DISABLE_ISLAND_PROPERTY;
+        boolean disableIslandFeatureCache = hasValue(cursor, columnCount,
+                SettingsContract.DISABLE_ISLAND_FEATURE_CACHE)
+                ? cursor.getInt(SettingsContract.DISABLE_ISLAND_FEATURE_CACHE) != 0
+                : FocusRestoreSettings.DEFAULT_DISABLE_ISLAND_FEATURE_CACHE;
+        String legacySeparator = hasValue(cursor, columnCount,
+                SettingsContract.LEGACY_ISLAND_SEPARATOR)
+                ? cursor.getString(SettingsContract.LEGACY_ISLAND_SEPARATOR)
+                : FocusRestoreSettings.DEFAULT_ISLAND_SEPARATOR;
+        boolean allowFocusClick = hasValue(cursor, columnCount,
+                SettingsContract.ALLOW_FOCUS_CLICK)
+                && cursor.getInt(SettingsContract.ALLOW_FOCUS_CLICK) != 0;
+        String generalSeparator = hasValue(cursor, columnCount,
+                SettingsContract.ISLAND_GENERAL_SEPARATOR)
+                ? cursor.getString(SettingsContract.ISLAND_GENERAL_SEPARATOR) : legacySeparator;
+        String sideSeparator = hasValue(cursor, columnCount,
+                SettingsContract.ISLAND_SIDE_SEPARATOR)
+                ? cursor.getString(SettingsContract.ISLAND_SIDE_SEPARATOR) : legacySeparator;
+        Set<String> forcePackages = hasValue(cursor, columnCount,
+                SettingsContract.ISLAND_FORCE_PACKAGES)
+                ? splitPackages(cursor.getString(SettingsContract.ISLAND_FORCE_PACKAGES))
+                : Collections.<String>emptySet();
+        int hookMode = hasValue(cursor, columnCount, SettingsContract.HOOK_MODE)
+                ? cursor.getInt(SettingsContract.HOOK_MODE) : FocusRestoreSettings.DEFAULT_HOOK_MODE;
+        boolean hideNotificationIcons = hasValue(cursor, columnCount,
+                SettingsContract.HIDE_NOTIFICATION_ICONS)
+                ? cursor.getInt(SettingsContract.HIDE_NOTIFICATION_ICONS) != 0
+                : FocusRestoreSettings.DEFAULT_HIDE_NOTIFICATION_ICONS;
+        boolean showFocusDivider = hasValue(cursor, columnCount,
+                SettingsContract.SHOW_FOCUS_DIVIDER)
+                ? cursor.getInt(SettingsContract.SHOW_FOCUS_DIVIDER) != 0
+                : FocusRestoreSettings.DEFAULT_SHOW_FOCUS_DIVIDER;
 
         return new HookSettings(hookMode, limitWidth, widthDp, marqueeDelayMs,
                 compatRetry, marqueeBounce,
@@ -123,6 +144,10 @@ final class HookSettings {
                 + " islandSideSeparator=" + displaySeparator(sideSeparator);
     }
 
+    private static boolean hasValue(Cursor cursor, int columnCount, int index) {
+        return columnCount > index && !cursor.isNull(index);
+    }
+
     private static Set<String> splitPackages(String value) {
         if (value == null || value.length() == 0) return Collections.emptySet();
         HashSet<String> result = new HashSet<>();
@@ -135,12 +160,7 @@ final class HookSettings {
     }
 
     private static Set<String> immutablePackages(Set<String> packages) {
-        if (packages == null || packages.isEmpty()) return Collections.emptySet();
-        HashSet<String> copy = new HashSet<>();
-        for (String value : packages) {
-            if (value != null && value.trim().length() > 0) copy.add(value.trim());
-        }
-        return Collections.unmodifiableSet(copy);
+        return InputLimits.sanitizePackages(packages);
     }
 
     private static String displaySeparator(String value) {

@@ -3,6 +3,7 @@ package com.hyperos3.focusrestore;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
+import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
 
 /** Small compatibility layer for optional private SystemUI APIs. */
@@ -64,9 +65,19 @@ final class FocusReflection {
 
     private static boolean hasAnyMethod(Class<?> owner, String name) {
         if (owner == null) return false;
-        for (Method method : owner.getDeclaredMethods()) {
-            if (name.equals(method.getName())) return true;
+        try {
+            for (Method method : owner.getDeclaredMethods()) {
+                if (name.equals(method.getName())) return true;
+            }
+            for (Method method : owner.getMethods()) {
+                if (name.equals(method.getName())) return true;
+            }
+            return false;
+        } catch (Throwable throwable) {
+            XposedBridge.log("HyperOS3FocusRestore ERROR capabilityProbe "
+                    + owner.getName() + "#" + name + ": " + throwable);
+            XposedBridge.log(throwable);
+            return false;
         }
-        return false;
     }
 }

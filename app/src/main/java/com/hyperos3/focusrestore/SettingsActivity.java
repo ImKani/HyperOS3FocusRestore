@@ -45,6 +45,11 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 public final class SettingsActivity extends Activity {
     private static final String TAG = "HyperOS3FocusRestore";
@@ -65,8 +70,24 @@ public final class SettingsActivity extends Activity {
     static final int MAX_WIDTH_DP = FocusRestoreSettings.MAX_WIDTH_DP;
     static final int DEFAULT_MARQUEE_DELAY_MS = FocusRestoreSettings.DEFAULT_MARQUEE_DELAY_MS;
 
+    private static final Object STORE_WRITE_LOCK = new Object();
+    private static long lastAllocatedGeneration;
+
     private SharedPreferences preferences;
+    private SharedPreferences hookPreferences;
     private FocusRestoreSettings settings;
+    private final Object saveLock = new Object();
+    private final ExecutorService saveExecutor = Executors.newSingleThreadExecutor(command -> {
+        Thread thread = new Thread(command, TAG + "-save");
+        thread.setDaemon(true);
+        return thread;
+    });
+    private FocusRestoreSettings queuedSettings;
+    private long queuedSettingsGeneration;
+    private long settingsGeneration;
+    private boolean saveWorkerRunning;
+    private Future<?> saveFuture;
+    private volatile boolean destroyed;
     private LinearLayout pageContainer;
     private LinearLayout bottomNav;
     private ImageButton[] navButtons;
@@ -136,17 +157,83 @@ public final class SettingsActivity extends Activity {
         applySystemPalette();
         configureSystemBars(getWindow());
         preferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-        SharedPreferences hookPreferences = FocusRestoreSettings.hookPreferences(this);
-        if (!FocusRestoreSettings.hasHookSettings(hookPreferences)) {
-            FocusRestoreSettings initialSettings = FocusRestoreSettings.fromPreferences(preferences);
-            boolean migrated = initialSettings.save(hookPreferences);
-            android.util.Log.i(TAG, "hook settings migration storage=deviceProtected saved="
-                    + migrated + " " + initialSettings.describe());
-        }
+        hookPreferences = FocusRestoreSettings.hookPreferences(this);
+        reconcileSettingsStores();
         setContentView(createContent());
         loadSettings();
         if (savedInstanceState != null) restorePendingState(savedInstanceState);
         showPage(currentPage);
+        if (savedInstanceState != null && savedInstanceState.getBoolean("m3.savePending", false)) {
+            saveSettings();
+        }
+    }
+
+    @Override
+    protected void onStop() {
+        Future<?> pendingSave;
+        synchronized (saveLock) {
+            pendingSave = saveFuture;
+        }
+        if (pendingSave != null && !pendingSave.isDone()) {
+            try {
+                pendingSave.get(1500L, TimeUnit.MILLISECONDS);
+            } catch (TimeoutException timeout) {
+                android.util.Log.w(TAG, "settings save still pending after onStop timeout", timeout);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                android.util.Log.w(TAG, "settings save wait interrupted", interrupted);
+            } catch (Exception failure) {
+                android.util.Log.e(TAG, "settings save wait failed", failure);
+            }
+        }
+        super.onStop();
+    }
+
+    @Override
+    protected void onDestroy() {
+        destroyed = true;
+        if (feedbackToast != null) feedbackToast.cancel();
+        saveExecutor.shutdown();
+        super.onDestroy();
+    }
+
+    private void reconcileSettingsStores() {
+        synchronized (STORE_WRITE_LOCK) {
+            long credentialGeneration = FocusRestoreSettings.generation(preferences);
+            long hookGeneration = FocusRestoreSettings.generation(hookPreferences);
+            settingsGeneration = Math.max(credentialGeneration, hookGeneration);
+            if (!FocusRestoreSettings.hasHookSettings(hookPreferences)) {
+                FocusRestoreSettings initial = FocusRestoreSettings.fromPreferences(preferences);
+                settingsGeneration = nextSettingsGenerationLocked();
+                boolean credentialSaved = initial.save(preferences, settingsGeneration);
+                boolean hookSaved = initial.save(hookPreferences, settingsGeneration);
+                android.util.Log.i(TAG, "settings initialized generation=" + settingsGeneration
+                        + " credential=" + credentialSaved + " deviceProtected=" + hookSaved
+                        + " " + initial.describe());
+                return;
+            }
+            if (credentialGeneration == hookGeneration && credentialGeneration > 0L) return;
+            FocusRestoreSettings newest = hookGeneration > credentialGeneration
+                    ? FocusRestoreSettings.fromPreferences(hookPreferences)
+                    : FocusRestoreSettings.fromPreferences(preferences);
+            settingsGeneration = nextSettingsGenerationLocked();
+            boolean credentialSaved = newest.save(preferences, settingsGeneration);
+            boolean hookSaved = newest.save(hookPreferences, settingsGeneration);
+            android.util.Log.i(TAG, "settings reconciled generation=" + settingsGeneration
+                    + " source=" + (hookGeneration > credentialGeneration
+                    ? "deviceProtected" : "credential")
+                    + " credential=" + credentialSaved + " deviceProtected=" + hookSaved
+                    + " " + newest.describe());
+        }
+    }
+
+    private long nextSettingsGenerationLocked() {
+        long persisted = Math.max(FocusRestoreSettings.generation(preferences),
+                FocusRestoreSettings.generation(hookPreferences));
+        long floor = Math.max(Math.max(lastAllocatedGeneration, settingsGeneration),
+                Math.max(persisted, System.currentTimeMillis()));
+        lastAllocatedGeneration = floor == Long.MAX_VALUE ? Long.MAX_VALUE : floor + 1L;
+        return lastAllocatedGeneration;
     }
 
     private void applySystemPalette() {
@@ -452,6 +539,9 @@ public final class SettingsActivity extends Activity {
         outState.putString("m3.general", pendingGeneralSeparator);
         outState.putString("m3.side", pendingSideSeparator);
         outState.putStringArrayList("m3.packages", new ArrayList<>(pendingForcePackages));
+        synchronized (saveLock) {
+            outState.putBoolean("m3.savePending", saveWorkerRunning || queuedSettings != null);
+        }
         super.onSaveInstanceState(outState);
     }
 
@@ -853,13 +943,70 @@ public final class SettingsActivity extends Activity {
                 pendingDisableIslandFeatureCache, pendingAllowFocusClick,
                 pendingHideNotificationIcons, pendingShowFocusDivider,
                 pendingGeneralSeparator, pendingSideSeparator, pendingForcePackages);
-        boolean credentialSaved = settings.save(preferences);
-        boolean hookSaved = settings.save(FocusRestoreSettings.hookPreferences(this));
-        android.util.Log.i(TAG, "settings saved credential=" + credentialSaved
-                + " deviceProtected=" + hookSaved + " " + settings.describe());
-        showFeedback(credentialSaved && hookSaved
-                ? "设置已保存，请重启系统界面生效"
-                : "设置保存失败，请检查存储状态后重试");
+        long generation;
+        synchronized (STORE_WRITE_LOCK) {
+            generation = settingsGeneration = nextSettingsGenerationLocked();
+        }
+        synchronized (saveLock) {
+            queuedSettings = settings;
+            queuedSettingsGeneration = generation;
+            if (saveWorkerRunning) return;
+            saveWorkerRunning = true;
+        }
+        Future<?> future = saveExecutor.submit(this::drainSettingsSaves);
+        synchronized (saveLock) {
+            saveFuture = future;
+        }
+    }
+
+    private void drainSettingsSaves() {
+        while (true) {
+            FocusRestoreSettings snapshot;
+            long generation;
+            synchronized (saveLock) {
+                snapshot = queuedSettings;
+                generation = queuedSettingsGeneration;
+                queuedSettings = null;
+                if (snapshot == null) {
+                    saveWorkerRunning = false;
+                    return;
+                }
+            }
+            boolean credentialSaved;
+            boolean hookSaved;
+            boolean stale;
+            synchronized (STORE_WRITE_LOCK) {
+                long persisted = Math.max(FocusRestoreSettings.generation(preferences),
+                        FocusRestoreSettings.generation(hookPreferences));
+                stale = persisted > generation;
+                if (stale) {
+                    credentialSaved = false;
+                    hookSaved = false;
+                } else {
+                    credentialSaved = snapshot.save(preferences, generation);
+                    hookSaved = snapshot.save(hookPreferences, generation);
+                    if (!credentialSaved) {
+                        credentialSaved = snapshot.save(preferences, generation);
+                    }
+                    if (!hookSaved) hookSaved = snapshot.save(hookPreferences, generation);
+                }
+            }
+            android.util.Log.i(TAG, "settings saved generation=" + generation
+                    + " stale=" + stale + " credential=" + credentialSaved
+                    + " deviceProtected=" + hookSaved + " " + snapshot.describe());
+            boolean latest;
+            synchronized (saveLock) {
+                latest = generation == settingsGeneration && queuedSettings == null;
+            }
+            if (latest && !destroyed && !stale) {
+                final boolean success = credentialSaved && hookSaved;
+                runOnUiThread(() -> {
+                    if (!destroyed) showFeedback(success
+                            ? "设置已保存，请重启系统界面生效"
+                            : "设置保存失败，请检查存储状态后重试");
+                });
+            }
+        }
     }
 
     private void markPending() {

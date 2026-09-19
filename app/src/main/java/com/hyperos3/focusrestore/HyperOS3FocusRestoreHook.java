@@ -7,6 +7,8 @@ import android.app.PendingIntent;
 import android.content.Context;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.Parcelable;
 import android.os.SystemClock;
 import android.database.Cursor;
@@ -49,7 +51,12 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
 
     private static final long SETTINGS_REFRESH_INTERVAL_MS = 1000L;
     private static final long CONVERTED_KEY_TTL_MS = 10L * 60L * 1000L;
+    private static final long MARQUEE_ATTACH_TIMEOUT_MS = 2000L;
     private static final int MAX_CONVERTED_KEYS = 128;
+    private static final String[] REMOTE_VIEWS_CONTAINER_FIELDS = {
+            "mRemoteView", "mRemoteViews", "mRemoteViewContainer",
+            "mContentRemoteView", "mContentRemoteViews", "mCustomViewContainer"
+    };
 
     private static final Set<ClassLoader> INSTALLED_CLASS_LOADERS =
             Collections.newSetFromMap(new WeakHashMap<ClassLoader, Boolean>());
@@ -76,10 +83,19 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
     private boolean modeHooksInstalled;
     private int installedHookMode;
     private HyperOS4FocusController os4Controller;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private TextView pendingMarqueeText;
     private Runnable pendingMarqueeRunnable;
+    private View.OnAttachStateChangeListener pendingMarqueeAttachListener;
+    private Runnable pendingMarqueeAttachTimeout;
+    private TextView activeMarqueeText;
+    private View.OnAttachStateChangeListener activeMarqueeDetachListener;
     private ValueAnimator fallbackMarqueeAnimator;
     private long marqueeGeneration;
+    private final Map<TextView, OriginalWidthState> originalTextWidths =
+            Collections.synchronizedMap(new WeakHashMap<>());
+    private final Map<View, ParentWidthState> originalParentWidths =
+            Collections.synchronizedMap(new WeakHashMap<>());
     private final Set<Object> convertedBeans = Collections.synchronizedSet(
             Collections.newSetFromMap(new WeakHashMap<>()));
     private final Map<Object, Boolean> preMarkedOriginalFocus = Collections.synchronizedMap(
@@ -87,6 +103,10 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
     private final Set<Object> preMarkedIslands = Collections.synchronizedSet(
             Collections.newSetFromMap(new WeakHashMap<>()));
     private final Map<Object, OriginalBeanState> originalBeanStates =
+            Collections.synchronizedMap(new WeakHashMap<>());
+    private final Map<View, Integer> remoteViewsHiddenPrompts =
+            Collections.synchronizedMap(new WeakHashMap<>());
+    private final Map<View, Map<View, Integer>> remoteViewsHiddenContainers =
             Collections.synchronizedMap(new WeakHashMap<>());
     private final LinkedHashMap<String, Long> convertedNotificationKeys =
             new LinkedHashMap<>(16, 0.75f, true);
@@ -147,7 +167,11 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
         modeHooksInstalled = true;
         log("installing configuredMode=OS" + installedHookMode
                 + " settings=" + currentSettings.describe());
-        logCapabilities(installedHookMode);
+        try {
+            logCapabilities(installedHookMode);
+        } catch (Throwable throwable) {
+            error("logCapabilities", throwable);
+        }
         if (installedHookMode == FocusRestoreSettings.HOOK_MODE_OS4) {
             installOS4Hooks();
         } else {
@@ -451,10 +475,46 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
             Object value = XposedHelpers.getObjectField(promptView, "mContentText");
             if (!(value instanceof TextView)) return;
             TextView textView = (TextView) value;
-            if (!currentSettings.limitWidth) return;
+            ViewGroup.LayoutParams params = textView.getLayoutParams();
+            if (!currentSettings.limitWidth) {
+                OriginalWidthState original;
+                synchronized (originalTextWidths) {
+                    original = originalTextWidths.remove(textView);
+                }
+                if (original == null) return;
+                boolean changed = textView.getMaxWidth() != original.maxWidth;
+                if (changed) textView.setMaxWidth(original.maxWidth);
+                if (params != null && original.hasLayoutParams
+                        && params.width != original.layoutWidth) {
+                    params.width = original.layoutWidth;
+                    textView.setLayoutParams(params);
+                    changed = true;
+                }
+                if (changed) textView.requestLayout();
+                log("restored system focus text width maxWidth=" + original.maxWidth
+                        + " layoutWidth=" + (original.hasLayoutParams
+                        ? original.layoutWidth : "unavailable"));
+                return;
+            }
             float density = textView.getResources().getDisplayMetrics().density;
             int widthPx = Math.max(1, Math.round(currentSettings.widthDp * density));
-            ViewGroup.LayoutParams params = textView.getLayoutParams();
+            synchronized (originalTextWidths) {
+                OriginalWidthState original = originalTextWidths.get(textView);
+                if (original == null) {
+                    original = new OriginalWidthState(textView.getMaxWidth(),
+                            params == null ? 0 : params.width, params != null, widthPx);
+                    originalTextWidths.put(textView, original);
+                } else {
+                    if (textView.getMaxWidth() != original.lastAppliedWidth) {
+                        original.maxWidth = textView.getMaxWidth();
+                    }
+                    if (params != null && params.width != original.lastAppliedWidth) {
+                        original.layoutWidth = params.width;
+                        original.hasLayoutParams = true;
+                    }
+                    original.lastAppliedWidth = widthPx;
+                }
+            }
             boolean changed = textView.getMaxWidth() != widthPx;
             if (changed) textView.setMaxWidth(widthPx);
             if (params != null && params.width != widthPx) {
@@ -492,6 +552,7 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
             textView.setSelected(true);
             textView.setMarqueeRepeatLimit(MARQUEE_REPEAT_LIMIT);
             XposedHelpers.callMethod(textView, "startMarqueeLocal");
+            registerActiveMarqueeOwner(textView);
             if (hasMarqueeOverflow(textView)) {
                 stopNativeMarquee(textView);
                 startFallbackMarquee(textView);
@@ -560,6 +621,40 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
         }
     }
 
+    private synchronized void registerActiveMarqueeOwner(final TextView textView) {
+        if (activeMarqueeText == textView && activeMarqueeDetachListener != null) return;
+        clearActiveMarqueeOwnerLocked();
+        activeMarqueeText = textView;
+        activeMarqueeDetachListener = new View.OnAttachStateChangeListener() {
+            @Override public void onViewAttachedToWindow(View view) {
+            }
+
+            @Override public void onViewDetachedFromWindow(View view) {
+                synchronized (HyperOS3FocusRestoreHook.this) {
+                    if (activeMarqueeText == textView) clearActiveMarqueeOwnerLocked();
+                }
+            }
+        };
+        textView.addOnAttachStateChangeListener(activeMarqueeDetachListener);
+    }
+
+    private void clearActiveMarqueeOwnerLocked() {
+        TextView textView = activeMarqueeText;
+        if (textView != null && activeMarqueeDetachListener != null) {
+            textView.removeOnAttachStateChangeListener(activeMarqueeDetachListener);
+        }
+        activeMarqueeText = null;
+        activeMarqueeDetachListener = null;
+        if (fallbackMarqueeAnimator != null) {
+            fallbackMarqueeAnimator.cancel();
+            fallbackMarqueeAnimator = null;
+        }
+        if (textView != null) {
+            stopNativeMarquee(textView);
+            textView.scrollTo(0, 0);
+        }
+    }
+
     private void startFallbackMarquee(TextView textView) {
         try {
             float textWidth = textView.getPaint().measureText(textView.getText().toString());
@@ -611,19 +706,14 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
     }
 
     private synchronized void scheduleNativeMarquee(Object promptView) {
+        clearPendingMarqueeLocked();
+        final long generation = ++marqueeGeneration;
+        clearActiveMarqueeOwnerLocked();
         try {
             Object value = XposedHelpers.getObjectField(promptView, "mContentText");
             if (!(value instanceof TextView)) return;
             final TextView textView = (TextView) value;
-            if (pendingMarqueeText != null && pendingMarqueeRunnable != null) {
-                pendingMarqueeText.removeCallbacks(pendingMarqueeRunnable);
-            }
-            if (fallbackMarqueeAnimator != null) {
-                fallbackMarqueeAnimator.cancel();
-                fallbackMarqueeAnimator = null;
-            }
             textView.scrollTo(0, 0);
-            final long generation = ++marqueeGeneration;
             pendingMarqueeText = textView;
             pendingMarqueeRunnable = new Runnable() {
                 private int attempts;
@@ -632,10 +722,17 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
                     synchronized (HyperOS3FocusRestoreHook.this) {
                         if (generation != marqueeGeneration || pendingMarqueeText != textView) return;
                     }
-                    if (Build.VERSION.SDK_INT >= 19 && !textView.isAttachedToWindow()) return;
+                    if (Build.VERSION.SDK_INT >= 19 && !textView.isAttachedToWindow()) {
+                        waitForMarqueeAttach(textView, generation, this);
+                        return;
+                    }
                     attempts++;
                     if (textView.getText() == null || textView.getText().length() == 0) {
-                        if (attempts < 3) textView.postDelayed(this, 100L);
+                        if (attempts < 3) {
+                            textView.postDelayed(this, 100L);
+                        } else {
+                            finishPendingMarquee(textView, generation);
+                        }
                         return;
                     }
                     boolean ready = startNativeMarquee(textView, attempts);
@@ -649,7 +746,9 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
                     // marquee state immediately after the first native start.
                     if (currentSettings.compatRetry && attempts < 2) {
                         textView.postDelayed(this, 150L);
+                        return;
                     }
+                    finishPendingMarquee(textView, generation);
                 }
             };
             textView.postDelayed(pendingMarqueeRunnable,
@@ -658,6 +757,70 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
         } catch (Throwable t) {
             error("scheduleNativeMarquee", t);
         }
+    }
+
+    private synchronized void cancelCurrentMarquee() {
+        clearPendingMarqueeLocked();
+        marqueeGeneration++;
+        clearActiveMarqueeOwnerLocked();
+    }
+
+    private synchronized void waitForMarqueeAttach(final TextView textView,
+                                                    final long generation,
+                                                    final Runnable startRunnable) {
+        if (generation != marqueeGeneration || pendingMarqueeText != textView
+                || pendingMarqueeAttachListener != null) return;
+        pendingMarqueeAttachListener = new View.OnAttachStateChangeListener() {
+            @Override public void onViewAttachedToWindow(View view) {
+                synchronized (HyperOS3FocusRestoreHook.this) {
+                    if (generation != marqueeGeneration || pendingMarqueeText != textView) return;
+                    clearMarqueeAttachWaitLocked();
+                }
+                mainHandler.post(startRunnable);
+            }
+
+            @Override public void onViewDetachedFromWindow(View view) {
+            }
+        };
+        pendingMarqueeAttachTimeout = () -> {
+            synchronized (HyperOS3FocusRestoreHook.this) {
+                if (generation != marqueeGeneration || pendingMarqueeText != textView) return;
+                clearMarqueeAttachWaitLocked();
+                pendingMarqueeText = null;
+                pendingMarqueeRunnable = null;
+            }
+            log("focus marquee attach wait timed out");
+        };
+        textView.addOnAttachStateChangeListener(pendingMarqueeAttachListener);
+        mainHandler.postDelayed(pendingMarqueeAttachTimeout, MARQUEE_ATTACH_TIMEOUT_MS);
+        log("waiting for focus text attach before marquee");
+    }
+
+    private synchronized void finishPendingMarquee(TextView textView, long generation) {
+        if (generation != marqueeGeneration || pendingMarqueeText != textView) return;
+        clearMarqueeAttachWaitLocked();
+        pendingMarqueeText = null;
+        pendingMarqueeRunnable = null;
+    }
+
+    private void clearPendingMarqueeLocked() {
+        if (pendingMarqueeText != null && pendingMarqueeRunnable != null) {
+            pendingMarqueeText.removeCallbacks(pendingMarqueeRunnable);
+        }
+        clearMarqueeAttachWaitLocked();
+        pendingMarqueeText = null;
+        pendingMarqueeRunnable = null;
+    }
+
+    private void clearMarqueeAttachWaitLocked() {
+        if (pendingMarqueeText != null && pendingMarqueeAttachListener != null) {
+            pendingMarqueeText.removeOnAttachStateChangeListener(pendingMarqueeAttachListener);
+        }
+        if (pendingMarqueeAttachTimeout != null) {
+            mainHandler.removeCallbacks(pendingMarqueeAttachTimeout);
+        }
+        pendingMarqueeAttachListener = null;
+        pendingMarqueeAttachTimeout = null;
     }
 
     private void hookFocusedParentParams() {
@@ -689,16 +852,34 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
             if (currentSettings.limitWidth) {
                 int widthPx = Math.round(currentSettings.widthDp
                         * parent.getResources().getDisplayMetrics().density);
+                synchronized (originalParentWidths) {
+                    ParentWidthState original = originalParentWidths.get(parent);
+                    if (original == null) {
+                        originalParentWidths.put(parent,
+                                new ParentWidthState(params.width, widthPx));
+                    } else {
+                        if (params.width != original.lastAppliedWidth) {
+                            original.originalWidth = params.width;
+                        }
+                        original.lastAppliedWidth = widthPx;
+                    }
+                }
                 if (params.width != widthPx) {
                     params.width = widthPx;
                     parent.setLayoutParams(params);
                     log("applied 0.4 manual focus parent width=" + currentSettings.widthDp
                             + "dp px=" + widthPx);
                 }
-            } else if (params.width != ViewGroup.LayoutParams.WRAP_CONTENT) {
-                params.width = ViewGroup.LayoutParams.WRAP_CONTENT;
-                parent.setLayoutParams(params);
-                log("restored system focus parent width");
+            } else {
+                ParentWidthState original;
+                synchronized (originalParentWidths) {
+                    original = originalParentWidths.remove(parent);
+                }
+                if (original != null && params.width != original.originalWidth) {
+                    params.width = original.originalWidth;
+                    parent.setLayoutParams(params);
+                    log("restored system focus parent width=" + original.originalWidth);
+                }
             }
         } catch (Throwable t) {
             error("applyParentWidth", t);
@@ -806,6 +987,7 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
             XposedBridge.hookAllMethods(view, "updateRemoteViews", new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) {
+                    restoreRemoteViewsPrompt(param.thisObject);
                     Object bean = getField(param.thisObject, "mData");
                     FocusData data = inspectBean(bean);
                     log("updateRemoteViews begin " + (data == null ? "bean=null" : data.summary()));
@@ -814,8 +996,36 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) {
                     if (param.hasThrowable()) {
-                        error("updateRemoteViews throwable", param.getThrowable());
+                        Throwable failure = param.getThrowable();
+                        error("updateRemoteViews throwable", failure);
+                        Object bean = getField(param.thisObject, "mData");
+                        FocusData data = inspectBean(bean);
+                        String fallback = data == null ? null : data.content;
+                        if (TextUtils.isEmpty(fallback) && data != null) fallback = data.ticker;
+                        RemoteViewsFailurePolicy.Action action = RemoteViewsFailurePolicy.decide(
+                                failure, !TextUtils.isEmpty(fallback));
+                        if (action == RemoteViewsFailurePolicy.Action.RETHROW) return;
+                        param.setResult(null);
+                        Object content = getField(param.thisObject, "mContentText");
+                        RemoteViewsFailurePolicy.Action appliedAction = action;
+                        if (action == RemoteViewsFailurePolicy.Action.TEXT_FALLBACK
+                                && content instanceof TextView) {
+                            TextView textView = (TextView) content;
+                            restoreRemoteViewsPrompt(param.thisObject);
+                            hideKnownRemoteViewsContainers(param.thisObject, textView);
+                            textView.setText(fallback);
+                            textView.setVisibility(View.VISIBLE);
+                            scheduleNativeMarquee(param.thisObject);
+                        } else {
+                            appliedAction = RemoteViewsFailurePolicy.Action.DROP_CURRENT;
+                            if (content instanceof TextView) ((TextView) content).setText(null);
+                            hideRemoteViewsPrompt(param.thisObject);
+                            cancelCurrentMarquee();
+                        }
+                        log("updateRemoteViews recovered action=" + appliedAction
+                                + " key=" + (data == null ? null : data.key));
                     } else {
+                        restoreRemoteViewsPrompt(param.thisObject);
                         log("updateRemoteViews end");
                         scheduleNativeMarquee(param.thisObject);
                     }
@@ -824,6 +1034,68 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
         } catch (Throwable t) {
             error("hookRemoteViewsErrors", t);
         }
+    }
+
+    private void hideRemoteViewsPrompt(Object promptObject) {
+        if (!(promptObject instanceof View)) return;
+        View prompt = (View) promptObject;
+        synchronized (remoteViewsHiddenPrompts) {
+            if (!remoteViewsHiddenPrompts.containsKey(prompt)) {
+                remoteViewsHiddenPrompts.put(prompt, prompt.getVisibility());
+            }
+        }
+        prompt.setVisibility(View.GONE);
+    }
+
+    private void restoreRemoteViewsPrompt(Object promptObject) {
+        if (!(promptObject instanceof View)) return;
+        View prompt = (View) promptObject;
+        Integer visibility;
+        synchronized (remoteViewsHiddenPrompts) {
+            visibility = remoteViewsHiddenPrompts.remove(prompt);
+        }
+        if (visibility != null) prompt.setVisibility(visibility);
+        Map<View, Integer> containers;
+        synchronized (remoteViewsHiddenContainers) {
+            containers = remoteViewsHiddenContainers.remove(prompt);
+        }
+        if (containers != null) {
+            for (Map.Entry<View, Integer> entry : containers.entrySet()) {
+                entry.getKey().setVisibility(entry.getValue());
+            }
+        }
+    }
+
+    private void hideKnownRemoteViewsContainers(Object promptObject, TextView contentText) {
+        if (!(promptObject instanceof View)) return;
+        View prompt = (View) promptObject;
+        Map<View, Integer> containers = new WeakHashMap<>();
+        int hidden = 0;
+        for (String fieldName : REMOTE_VIEWS_CONTAINER_FIELDS) {
+            Object value = getField(promptObject, fieldName);
+            if (!(value instanceof View)) continue;
+            View candidate = (View) value;
+            if (candidate == contentText || isViewAncestor(candidate, contentText)
+                    || containers.containsKey(candidate)) continue;
+            containers.put(candidate, candidate.getVisibility());
+            candidate.setVisibility(View.GONE);
+            hidden++;
+        }
+        if (!containers.isEmpty()) {
+            synchronized (remoteViewsHiddenContainers) {
+                remoteViewsHiddenContainers.put(prompt, containers);
+            }
+        }
+        log("updateRemoteViews textFallback hiddenRemoteContainers=" + hidden);
+    }
+
+    private static boolean isViewAncestor(View ancestor, View child) {
+        ViewParent parent = child == null ? null : child.getParent();
+        while (parent instanceof View) {
+            if (parent == ancestor) return true;
+            parent = parent.getParent();
+        }
+        return false;
     }
 
     private boolean shouldConvert(FocusData data) {
@@ -836,7 +1108,7 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
     private boolean isSmsVerificationCode(FocusData data) {
         if (data == null || !"com.android.mms".equals(data.packageName)
                 || TextUtils.isEmpty(data.islandParam)
-                || data.islandParam.length() > 256 * 1024) return false;
+                || !InputLimits.isPayloadAllowed(data.islandParam)) return false;
         try {
             JSONObject root = new JSONObject(data.islandParam);
             return root.optInt("protocol", -1) == 1
@@ -1452,6 +1724,31 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
     private static void error(String stage, Throwable t) {
         Log.e(TAG, stage, t);
         XposedBridge.log(TAG + " ERROR " + stage + ": " + Log.getStackTraceString(t));
+    }
+
+    private static final class OriginalWidthState {
+        int maxWidth;
+        int layoutWidth;
+        boolean hasLayoutParams;
+        int lastAppliedWidth;
+
+        OriginalWidthState(int maxWidth, int layoutWidth, boolean hasLayoutParams,
+                           int lastAppliedWidth) {
+            this.maxWidth = maxWidth;
+            this.layoutWidth = layoutWidth;
+            this.hasLayoutParams = hasLayoutParams;
+            this.lastAppliedWidth = lastAppliedWidth;
+        }
+    }
+
+    private static final class ParentWidthState {
+        int originalWidth;
+        int lastAppliedWidth;
+
+        ParentWidthState(int originalWidth, int lastAppliedWidth) {
+            this.originalWidth = originalWidth;
+            this.lastAppliedWidth = lastAppliedWidth;
+        }
     }
 
     private static final class OriginalBeanState {

@@ -24,13 +24,14 @@ GitHub：<https://github.com/ImKani/HyperOS3FocusRestore>
 
 ## 当前版本
 
-版本：`0.13.20`
+版本：`0.13.21`
 
 本版本新增 HyperOS 4 手动适配，并保留原 HyperOS 3 Hook：
 
 - 由用户手动选择 HyperOS 3 或 HyperOS 4，默认 HyperOS 3；变更自动保存，重启 SystemUI 或设备后生效
-- 设置会同步到 Direct Boot 可读的设备加密存储，确保开机解锁前启动的 SystemUI 能读取手动选择的模式
-- SystemUI 在 `Application.attach()` 阶段直接使用可用的 base Context 查询设置，避免 Application Context 尚未建立时误判设置不可用
+- 设置在后台按代次同步到 CE 与 Direct Boot 可读的设备加密存储；启动设置页时会用较新代次修复另一份副本
+- SystemUI 在 `Application.attach()` 阶段直接使用可用的 base Context 查询设置；首次使用须先进入设置页完成设备加密存储初始化，再手动重启 SystemUI 或设备
+- 若启动时 Provider 或配置存储不可用，本次 SystemUI 生命周期不会安装模式 Hook，也不会自动改用默认模式或稍后切换模式
 - 不自动检测系统版本，不在 Hook 缺失时自动切换或回退
 - HyperOS 3 继续使用原有 Focus Prompt 路径
 - HyperOS 4 监听通知管线，并使用状态栏 Primary Chip 位置显示原生 Focus 或转换后的超级岛文本
@@ -45,6 +46,10 @@ GitHub：<https://github.com/ImKani/HyperOS3FocusRestore>
 - 焦点通知宽度限制与滚动方向控制
 - 焦点通知点击控制
 - 两条超级岛屏蔽路径在两种模式下均保持启用
+- OS3 关闭宽度限制时恢复各 View 的最新 ROM 原值；未挂载文本使用有界 attach 等待启动跑马灯
+- OS3 已知 RemoteViews 绑定异常按通知降级为文本或丢弃坏候选，未知异常保持原样并完整记录
+- OS4 合并过期渲染任务，以 Pipeline、状态栏 Host、DarkReceiver 和候选代次隔离旧回调
+- 通知 payload、解析输出、分隔符和白名单集合具有统一上限，避免异常输入拖垮 SystemUI
 - 测试工具已归档
 
 模块标识：
@@ -133,15 +138,15 @@ Android Gradle Plugin 8.7.3
 构建 debug 或 release 变体，APK 输出路径：
 
 ```text
-app/build/outputs/apk/debug/HyperOS3FocusRestore-0.13.10-debug.apk
-app/build/outputs/apk/release/HyperOS3FocusRestore-0.13.10-release.apk
+app/build/outputs/apk/debug/HyperOS3FocusRestore-0.13.21-debug.apk
+app/build/outputs/apk/release/HyperOS3FocusRestore-0.13.21-release.apk
 ```
 
-模块不声明网络、存储、后台服务等额外权限。关于项目按钮通过系统浏览器打开外部链接，网络访问由浏览器处理。
+模块不声明网络、存储或后台服务权限。为显示白名单应用列表，Manifest 声明包可见性相关的 `QUERY_ALL_PACKAGES` 和小米系统权限 `com.android.permission.GET_INSTALLED_APPS`；关于项目按钮通过系统浏览器打开外部链接，网络访问由浏览器处理。配置 XML 保持私有，但导出的只读 Provider 必须允许不同签名的 SystemUI 查询，因此其他应用也可能读取模式、白名单等配置；Provider 不提供写接口。
 
 ## 安装和作用域
 
-1. 安装 `HyperOS3FocusRestore-0.13.10-release.apk` 或 `HyperOS3FocusRestore-0.13.10-debug.apk`。
+1. 安装 `HyperOS3FocusRestore-0.13.21-release.apk` 或 `HyperOS3FocusRestore-0.13.21-debug.apk`。
 2. 在 LSPosed 中启用本模块。
 3. 作用域应只有：
 
@@ -155,7 +160,7 @@ com.android.systemui
 6. 重启设备，确保 SystemUI 的静态功能字段和手动选择的 Hook 在启动阶段初始化。
 7. 触发以前会显示超级岛或焦点通知的通知。
 
-这是现有 Application ID 的显示品牌更新，旧版可通过相同包名、签名和更高版本号覆盖升级。测试时请禁用旧模块，避免两个模块同时 Hook SystemUI。
+这是现有 Application ID 的显示品牌更新，旧版可通过相同包名、签名和更高版本号覆盖升级。Debug 与 Release 共用当前固定测试证书，以支持覆盖安装并保留 CE/DP 配置；Release 仅表示构建变体，不代表应用商店生产签名。测试时请禁用旧模块，避免两个模块同时 Hook SystemUI。
 
 ## 抓取日志
 

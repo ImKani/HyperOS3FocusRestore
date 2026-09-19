@@ -4,7 +4,6 @@ import android.content.Context;
 import android.content.SharedPreferences;
 
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.Set;
 
 /** Centralized persisted settings and compatibility defaults. */
@@ -29,6 +28,7 @@ public final class FocusRestoreSettings {
     public static final String KEY_HIDE_NOTIFICATION_ICONS = "hide_notification_icons";
     public static final String KEY_SHOW_FOCUS_DIVIDER = "show_focus_divider";
     static final String KEY_HOOK_SETTINGS_READY = "hook_settings_ready";
+    static final String KEY_SETTINGS_GENERATION = "settings_generation";
     public static final String PACKAGE_SET_SEPARATOR = "\u001f";
 
     public static final int HOOK_MODE_OS3 = 3;
@@ -125,6 +125,10 @@ public final class FocusRestoreSettings {
         return preferences.getBoolean(KEY_HOOK_SETTINGS_READY, false);
     }
 
+    static long generation(SharedPreferences preferences) {
+        return Math.max(0L, preferences.getLong(KEY_SETTINGS_GENERATION, 0L));
+    }
+
     public static FocusRestoreSettings fromPreferences(SharedPreferences preferences) {
         String legacy = preferences.getString(KEY_ISLAND_SEPARATOR, DEFAULT_ISLAND_SEPARATOR);
         return new FocusRestoreSettings(
@@ -160,6 +164,10 @@ public final class FocusRestoreSettings {
     }
 
     public boolean save(SharedPreferences preferences) {
+        return save(preferences, generation(preferences) + 1L);
+    }
+
+    public boolean save(SharedPreferences preferences, long generation) {
         return preferences.edit()
                 .putInt(KEY_HOOK_MODE, hookMode)
                 .putBoolean(KEY_LIMIT_WIDTH, limitWidth)
@@ -177,21 +185,18 @@ public final class FocusRestoreSettings {
                 .putString(KEY_ISLAND_SIDE_SEPARATOR, islandSideSeparator)
                 .putString(KEY_ISLAND_SEPARATOR, islandGeneralSeparator)
                 .putStringSet(KEY_ISLAND_FORCE_PACKAGES, islandForcePackages)
+                .putLong(KEY_SETTINGS_GENERATION, Math.max(0L, generation))
                 .putBoolean(KEY_HOOK_SETTINGS_READY, true)
                 .commit();
     }
 
     private static Set<String> immutablePackages(Set<String> packages) {
-        if (packages == null || packages.isEmpty()) return Collections.emptySet();
-        HashSet<String> copy = new HashSet<>();
-        for (String value : packages) {
-            if (value != null && value.trim().length() > 0) copy.add(value.trim());
-        }
-        return Collections.unmodifiableSet(copy);
+        return InputLimits.sanitizePackages(packages);
     }
 
     private static String valueOrDefault(String value) {
-        return value == null ? DEFAULT_ISLAND_SEPARATOR : value;
+        return InputLimits.limitSeparator(
+                value == null ? DEFAULT_ISLAND_SEPARATOR : value);
     }
 
     private static String displaySeparator(String value) {

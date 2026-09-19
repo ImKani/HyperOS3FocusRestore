@@ -4,14 +4,11 @@ import org.json.JSONObject;
 
 /** Package-private parser for HyperOS Dynamic Island payloads. */
 final class IslandPayloadParser {
-    private static final int MAX_PAYLOAD_CHARS = 256 * 1024;
-
     private IslandPayloadParser() {
     }
 
     static ParsedText parse(String payload, String generalSeparator, String sideSeparator) {
-        if (payload == null || payload.length() > MAX_PAYLOAD_CHARS
-                || payload.trim().length() == 0) return null;
+        if (!InputLimits.isPayloadAllowed(payload) || payload.trim().length() == 0) return null;
         String general = separator(generalSeparator);
         String side = separator(sideSeparator);
         try {
@@ -110,13 +107,13 @@ final class IslandPayloadParser {
         final String source;
 
         ParsedText(String text, String source) {
-            this.text = text;
+            this.text = InputLimits.limitOutput(text);
             this.source = source;
         }
     }
 
     private static String separator(String value) {
-        return value == null ? "" : value;
+        return InputLimits.limitSeparator(value == null ? "" : value);
     }
 
     private static String joinTexts(JSONObject object, String sep, String... keys) {
@@ -215,7 +212,7 @@ final class IslandPayloadParser {
         value = value.trim();
         if (value.length() == 0 || "Copy".equalsIgnoreCase(value)
                 || "稍后提醒".equals(value)) return null;
-        return value;
+        return InputLimits.limitOutput(value);
     }
 
     private static boolean empty(String value) {

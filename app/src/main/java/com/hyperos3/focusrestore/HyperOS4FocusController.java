@@ -79,10 +79,16 @@ final class HyperOS4FocusController {
     private final Map<String, DisplayItem> items = new LinkedHashMap<>();
     private final Set<Object> registeredPipelines = Collections.newSetFromMap(
             new WeakHashMap<Object, Boolean>());
+    private volatile Object activePipeline;
     private long updateSequence;
     private ViewGroup statusBarRoot;
+    private View.OnAttachStateChangeListener statusBarAttachListener;
     private ViewGroup primarySlot;
     private FocusHostView focusHost;
+    private long statusBarGeneration;
+    private long renderGeneration;
+    private boolean renderPosted;
+    private FocusHostView renderPostHost;
     private TextView statusBarClock;
     private final NotificationIconsVisibilityState notificationIconsVisibility =
             new NotificationIconsVisibilityState(View.GONE);
@@ -137,35 +143,56 @@ final class HyperOS4FocusController {
             Class<?> listenerClass = FocusReflection.findClass(classLoader,
                     "com.android.systemui.statusbar.notification.collection.notifcollection.NotifCollectionListener");
             Object listener = Proxy.newProxyInstance(classLoader, new Class<?>[]{listenerClass},
-                    new NotificationListener());
+                    new NotificationListener(pipeline));
             Method addListener = pipeline.getClass().getMethod("addCollectionListener", listenerClass);
             addListener.invoke(pipeline, listener);
-            logger.log("OS4 notifPipelineListener=registered");
+        } catch (Throwable throwable) {
+            synchronized (registeredPipelines) {
+                registeredPipelines.remove(pipeline);
+            }
+            logger.error("OS4 registerNotifPipeline", throwable);
+            return;
+        }
+        synchronized (items) {
+            activePipeline = pipeline;
+            items.clear();
+        }
+        logger.log("OS4 notifPipelineListener=registered activeOwner="
+                + System.identityHashCode(pipeline));
+        renderBest();
+        try {
             Object existing = XposedHelpers.callMethod(pipeline, "getAllNotifs");
             if (existing instanceof Collection) {
                 for (Object entry : new ArrayList<>((Collection<?>) existing)) {
-                    updateEntry(entry, "initial");
+                    updateEntry(entry, "initial", pipeline);
                 }
             }
         } catch (Throwable throwable) {
-            logger.error("OS4 registerNotifPipeline", throwable);
+            logger.error("OS4 initialNotifSnapshot", throwable);
         }
     }
 
     private final class NotificationListener implements InvocationHandler {
+        private final Object owner;
+
+        NotificationListener(Object owner) {
+            this.owner = owner;
+        }
+
         @Override
         public Object invoke(Object proxy, Method method, Object[] args) {
             String name = method.getName();
             if ("toString".equals(name)) return "HyperOS4FocusRestoreNotifListener";
             if ("hashCode".equals(name)) return System.identityHashCode(proxy);
             if ("equals".equals(name)) return args != null && args.length == 1 && proxy == args[0];
+            if (owner != activePipeline) return null;
             try {
                 if (("onEntryAdded".equals(name) || "onEntryUpdated".equals(name)
                         || "onEntryBind".equals(name)) && args != null && args.length > 0) {
-                    updateEntry(args[0], name);
+                    updateEntry(args[0], name, owner);
                 } else if (("onEntryRemoved".equals(name) || "onEntryCleanUp".equals(name))
                         && args != null && args.length > 0) {
-                    removeEntry(args[0], name);
+                    removeEntry(args[0], name, owner);
                 }
             } catch (Throwable throwable) {
                 logger.error("OS4 listener " + name, throwable);
@@ -174,11 +201,12 @@ final class HyperOS4FocusController {
         }
     }
 
-    private void updateEntry(Object entry, String stage) {
-        if (entry == null) return;
+    private void updateEntry(Object entry, String stage, Object owner) {
+        if (entry == null || owner != activePipeline) return;
         DisplayItem item = itemFactory.create(entry);
         String key = item == null ? entryKey(entry) : item.key;
         synchronized (items) {
+            if (owner != activePipeline) return;
             if (item == null || TextUtils.isEmpty(key) || !item.hasContent()) {
                 if (!TextUtils.isEmpty(key)) items.remove(key);
             } else {
@@ -194,10 +222,12 @@ final class HyperOS4FocusController {
         renderBest();
     }
 
-    private void removeEntry(Object entry, String stage) {
+    private void removeEntry(Object entry, String stage, Object owner) {
+        if (owner != activePipeline) return;
         String key = entryKey(entry);
         if (TextUtils.isEmpty(key)) return;
         synchronized (items) {
+            if (owner != activePipeline) return;
             items.remove(key);
         }
         logger.log("OS4 candidate " + stage + " key=" + key);
@@ -328,32 +358,44 @@ final class HyperOS4FocusController {
         }
     }
 
-    private void attachStatusBar(ViewGroup statusBarView) {
+    private synchronized void attachStatusBar(final ViewGroup statusBarView) {
         try {
             int primaryId = context.getResources().getIdentifier(
                     "ongoing_activity_chip_primary", "id", "com.android.systemui");
             View view = primaryId == 0 ? null : statusBarView.findViewById(primaryId);
-            if (!(view instanceof ViewGroup)) {
+            ViewGroup resolvedSlot = view instanceof ViewGroup ? (ViewGroup) view : null;
+            if (statusBarRoot == statusBarView && focusHost != null
+                    && primarySlot == resolvedSlot && resolvedSlot != null
+                    && focusHost.getParent() == resolvedSlot
+                    && isDescendantOf(resolvedSlot, statusBarView)) {
+                renderBest();
+                return;
+            }
+            teardownStatusBar(true);
+            statusBarRoot = statusBarView;
+            statusBarAttachListener = new View.OnAttachStateChangeListener() {
+                @Override public void onViewAttachedToWindow(View view) {
+                    if (view == statusBarRoot && focusHost == null) {
+                        attachStatusBar(statusBarView);
+                    }
+                }
+
+                @Override public void onViewDetachedFromWindow(View view) {
+                    if (view == statusBarRoot) teardownStatusBar(false);
+                }
+            };
+            statusBarView.addOnAttachStateChangeListener(statusBarAttachListener);
+
+            if (resolvedSlot == null) {
                 logger.log("OS4 statusBarPrimarySlot=missing id=" + primaryId);
                 return;
             }
-            ViewGroup slot = (ViewGroup) view;
-            restoreNotificationIcons();
-            FocusHostView oldHost = focusHost;
-            ViewGroup oldSlot = primarySlot;
-            if (oldHost != null && oldHost.getParent() instanceof ViewGroup) {
-                oldHost.clearContent();
-                ((ViewGroup) oldHost.getParent()).removeView(oldHost);
-            }
-            if (oldSlot != null && oldSlot != slot) {
-                oldSlot.setVisibility(View.GONE);
-            }
+            ViewGroup slot = resolvedSlot;
             FocusHostView host = new FocusHostView(slot.getContext());
             host.setId(View.generateViewId());
             host.setVisibility(View.GONE);
             slot.addView(host, new ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
-            statusBarRoot = statusBarView;
             primarySlot = slot;
             focusHost = host;
             notificationIconsId = statusBarView.getResources().getIdentifier(
@@ -369,10 +411,60 @@ final class HyperOS4FocusController {
             renderBest();
         } catch (Throwable throwable) {
             logger.error("OS4 attachStatusBar", throwable);
+            teardownStatusBar(false);
         }
     }
 
-    private void renderBest() {
+    private synchronized void teardownStatusBar(boolean removeAttachListener) {
+        statusBarGeneration++;
+        renderGeneration++;
+        renderPosted = false;
+        renderPostHost = null;
+        restoreNotificationIcons();
+        unregisterDarkReceiver();
+        FocusHostView host = focusHost;
+        focusHost = null;
+        primarySlot = null;
+        statusBarClock = null;
+        notificationIconsId = 0;
+        if (host != null) {
+            host.clearContent();
+            if (host.getParent() instanceof ViewGroup) {
+                ((ViewGroup) host.getParent()).removeView(host);
+            }
+        }
+        if (removeAttachListener) {
+            ViewGroup root = statusBarRoot;
+            if (root != null && statusBarAttachListener != null) {
+                root.removeOnAttachStateChangeListener(statusBarAttachListener);
+            }
+            statusBarAttachListener = null;
+            statusBarRoot = null;
+        }
+    }
+
+    private synchronized void renderBest() {
+        renderGeneration++;
+        FocusHostView host = focusHost;
+        if (host == null) return;
+        if (renderPosted && renderPostHost == host) return;
+        renderPosted = true;
+        renderPostHost = host;
+        if (!host.post(() -> drainRender(host))) {
+            renderPosted = false;
+            renderPostHost = null;
+            logger.log("OS4 render post rejected hostDetached=true");
+        }
+    }
+
+    private void drainRender(FocusHostView host) {
+        final long generation;
+        synchronized (this) {
+            if (!renderPosted || renderPostHost != host || host != focusHost) return;
+            renderPosted = false;
+            renderPostHost = null;
+            generation = renderGeneration;
+        }
         final DisplayItem best;
         synchronized (items) {
             DisplayItem selected = null;
@@ -385,27 +477,29 @@ final class HyperOS4FocusController {
             }
             best = selected;
         }
-        final FocusHostView host = focusHost;
-        if (host == null) return;
-        host.post(() -> render(host, best));
+        render(host, best, generation);
     }
 
-    private void render(FocusHostView host, DisplayItem item) {
-        if (host != focusHost) return;
+    private synchronized boolean isRenderCurrent(FocusHostView host, long generation) {
+        return host == focusHost && generation == renderGeneration;
+    }
+
+    private void render(FocusHostView host, DisplayItem item, long generation) {
+        if (!isRenderCurrent(host, generation)) return;
         if (item == null) {
-            host.clearContent();
-            host.setVisibility(View.GONE);
-            ViewGroup slot = primarySlot;
-            if (slot != null) slot.setVisibility(View.GONE);
-            restoreNotificationIcons();
-            logger.log("OS4 focus hidden; no eligible notification legacySlot=GONE"
-                    + " notificationIconsRestored=true");
+            synchronized (this) {
+                if (host != focusHost || generation != renderGeneration) return;
+                host.clearContent();
+                host.setVisibility(View.GONE);
+                ViewGroup slot = primarySlot;
+                if (slot != null) slot.setVisibility(View.GONE);
+                restoreNotificationIcons();
+                logger.log("OS4 focus hidden; no eligible notification legacySlot=GONE"
+                        + " notificationIconsRestored=true");
+            }
             return;
         }
         HookSettings settings = itemFactory.settings();
-        hideOriginalChildren();
-        setNotificationIconsHidden(settings.hideNotificationIcons);
-        host.setVisibility(View.VISIBLE);
         boolean night = (host.getResources().getConfiguration().uiMode
                 & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
         RemoteViews selected = night
@@ -430,22 +524,35 @@ final class HyperOS4FocusController {
             textView.setIncludeFontPadding(false);
             content = textView;
         }
+        if (!isRenderCurrent(host, generation)) return;
         if (content == null) {
+            boolean removed = false;
             synchronized (items) {
-                items.remove(item.key);
+                if (items.get(item.key) == item) {
+                    items.remove(item.key);
+                    removed = true;
+                }
             }
-            renderBest();
+            logger.log("OS4 candidate renderFailed key=" + item.key
+                    + " removedCurrent=" + removed);
+            if (removed) renderBest();
             return;
         }
-        host.showContent(content, item, settings);
-        logger.log("OS4 focus shown key=" + item.key + " package=" + item.packageName
-                + " source=" + item.source + " priority=" + item.priority
-                + " widthDp=" + settings.widthDp + " limit=" + settings.limitWidth
-                + " maxWidthPx=" + host.maxWidthPx
-                + " hideNotificationIcons=" + settings.hideNotificationIcons
-                + " showFocusDivider=" + settings.showFocusDivider
-                + " tint=0x" + Integer.toHexString(currentTint)
-                + " click=" + settings.allowFocusClick);
+        synchronized (this) {
+            if (host != focusHost || generation != renderGeneration) return;
+            hideOriginalChildren();
+            setNotificationIconsHidden(settings.hideNotificationIcons);
+            host.setVisibility(View.VISIBLE);
+            host.showContent(content, item, settings);
+            logger.log("OS4 focus shown key=" + item.key + " package=" + item.packageName
+                    + " source=" + item.source + " priority=" + item.priority
+                    + " widthDp=" + settings.widthDp + " limit=" + settings.limitWidth
+                    + " maxWidthPx=" + host.maxWidthPx
+                    + " hideNotificationIcons=" + settings.hideNotificationIcons
+                    + " showFocusDivider=" + settings.showFocusDivider
+                    + " tint=0x" + Integer.toHexString(currentTint)
+                    + " click=" + settings.allowFocusClick);
+        }
     }
 
     private void resolveStatusBarClock() {
@@ -474,6 +581,7 @@ final class HyperOS4FocusController {
                     "com.android.systemui.Dependency");
             darkDispatcher = XposedHelpers.callStaticMethod(
                     dependencyClass, "get", darkDispatcherClass);
+            final long ownerGeneration = statusBarGeneration;
             darkReceiver = Proxy.newProxyInstance(classLoader,
                     new Class<?>[]{receiverClass}, new InvocationHandler() {
                         @Override
@@ -483,6 +591,9 @@ final class HyperOS4FocusController {
                                     || "onDarkChangedWithContrast".equals(name))
                                     && args != null && args.length >= 3
                                     && args[2] instanceof Integer) {
+                                if (proxy != darkReceiver || ownerGeneration != statusBarGeneration) {
+                                    return null;
+                                }
                                 int tint = resolveTint(args[0], (Integer) args[2]);
                                 updateTint(tint, "DarkIconDispatcher." + name);
                             } else if ("hashCode".equals(name)) {
