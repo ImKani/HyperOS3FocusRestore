@@ -11,6 +11,7 @@ import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 import android.view.animation.LinearInterpolator;
 import android.widget.FrameLayout;
 import android.widget.RemoteViews;
@@ -86,7 +87,12 @@ final class HyperOS4FocusController {
     private TextView statusBarClock;
     private View notificationIcons;
     private int notificationIconsOriginalVisibility;
+    private float notificationIconsOriginalAlpha = 1f;
     private boolean notificationIconsHidden;
+    private boolean notificationIconsHideRequested;
+    private boolean notificationIconsMissingLogged;
+    private View statusBarPreDrawRoot;
+    private ViewTreeObserver.OnPreDrawListener statusBarPreDrawListener;
     private Object darkDispatcher;
     private Object darkReceiver;
     private Class<?> darkDispatcherClass;
@@ -259,6 +265,7 @@ final class HyperOS4FocusController {
                 return;
             }
             ViewGroup slot = (ViewGroup) view;
+            unregisterStatusBarPreDrawListener();
             restoreNotificationIcons();
             FocusHostView oldHost = focusHost;
             ViewGroup oldSlot = primarySlot;
@@ -277,6 +284,7 @@ final class HyperOS4FocusController {
             statusBarRoot = statusBarView;
             primarySlot = slot;
             focusHost = host;
+            registerStatusBarPreDrawListener();
             resolveStatusBarClock();
             registerDarkReceiver();
             // HyperOS 4 hides this legacy XML slot before installing its Compose
@@ -481,24 +489,45 @@ final class HyperOS4FocusController {
     }
 
     private void setNotificationIconsHidden(boolean hidden) {
-        if (!hidden) {
-            restoreNotificationIcons();
-            return;
+        notificationIconsHideRequested = hidden;
+        if (hidden) {
+            enforceNotificationIconsHidden("render");
+        } else {
+            restoreTrackedNotificationIcons();
         }
+    }
+
+    private void enforceNotificationIconsHidden(String source) {
+        if (!notificationIconsHideRequested) return;
         View icons = resolveNotificationIcons();
         if (icons == null) {
-            logger.log("OS4 notificationIcons=missing requestedHidden=true");
+            if (!notificationIconsMissingLogged) {
+                notificationIconsMissingLogged = true;
+                logger.log("OS4 notificationIcons=missing requestedHidden=true source=" + source);
+            }
             return;
         }
-        if (!notificationIconsHidden || notificationIcons != icons) {
-            restoreNotificationIcons();
+        notificationIconsMissingLogged = false;
+        boolean replaced = notificationIcons != icons;
+        if (!notificationIconsHidden || replaced) {
+            restoreTrackedNotificationIcons();
             notificationIcons = icons;
             notificationIconsOriginalVisibility = icons.getVisibility();
+            notificationIconsOriginalAlpha = icons.getAlpha();
             notificationIconsHidden = true;
         }
-        icons.setVisibility(View.GONE);
-        logger.log("OS4 notificationIcons=GONE id=" + icons.getId()
-                + " originalVisibility=" + notificationIconsOriginalVisibility);
+        if (replaced || icons.getVisibility() != View.GONE || icons.getAlpha() != 0f) {
+            int currentVisibility = icons.getVisibility();
+            float currentAlpha = icons.getAlpha();
+            icons.setAlpha(0f);
+            icons.setVisibility(View.GONE);
+            logger.log("OS4 notificationIcons=GONE id=" + icons.getId()
+                    + " source=" + source + " replaced=" + replaced
+                    + " currentVisibility=" + currentVisibility
+                    + " currentAlpha=" + currentAlpha
+                    + " originalVisibility=" + notificationIconsOriginalVisibility
+                    + " originalAlpha=" + notificationIconsOriginalAlpha);
+        }
     }
 
     private View resolveNotificationIcons() {
@@ -510,14 +539,62 @@ final class HyperOS4FocusController {
     }
 
     private void restoreNotificationIcons() {
+        notificationIconsHideRequested = false;
+        notificationIconsMissingLogged = false;
+        restoreTrackedNotificationIcons();
+    }
+
+    private void restoreTrackedNotificationIcons() {
         if (!notificationIconsHidden) return;
         View icons = notificationIcons;
-        if (icons != null) icons.setVisibility(notificationIconsOriginalVisibility);
+        if (icons != null) {
+            icons.setAlpha(notificationIconsOriginalAlpha);
+            icons.setVisibility(notificationIconsOriginalVisibility);
+        }
         logger.log("OS4 notificationIcons=restored id="
                 + (icons == null ? 0 : icons.getId())
-                + " visibility=" + notificationIconsOriginalVisibility);
+                + " visibility=" + notificationIconsOriginalVisibility
+                + " alpha=" + notificationIconsOriginalAlpha);
         notificationIcons = null;
         notificationIconsHidden = false;
+    }
+
+    private void registerStatusBarPreDrawListener() {
+        unregisterStatusBarPreDrawListener();
+        ViewGroup root = statusBarRoot;
+        if (root == null) return;
+        try {
+            statusBarPreDrawRoot = root;
+            statusBarPreDrawListener = () -> {
+                try {
+                    enforceNotificationIconsHidden("preDraw");
+                } catch (Throwable throwable) {
+                    logger.error("OS4 enforceNotificationIconsGuard", throwable);
+                }
+                return true;
+            };
+            root.getViewTreeObserver().addOnPreDrawListener(statusBarPreDrawListener);
+            logger.log("OS4 notificationIconsGuard=registered");
+        } catch (Throwable throwable) {
+            statusBarPreDrawRoot = null;
+            statusBarPreDrawListener = null;
+            logger.error("OS4 registerNotificationIconsGuard", throwable);
+        }
+    }
+
+    private void unregisterStatusBarPreDrawListener() {
+        View root = statusBarPreDrawRoot;
+        ViewTreeObserver.OnPreDrawListener listener = statusBarPreDrawListener;
+        if (root != null && listener != null) {
+            try {
+                ViewTreeObserver observer = root.getViewTreeObserver();
+                if (observer.isAlive()) observer.removeOnPreDrawListener(listener);
+            } catch (Throwable throwable) {
+                logger.error("OS4 unregisterNotificationIconsGuard", throwable);
+            }
+        }
+        statusBarPreDrawRoot = null;
+        statusBarPreDrawListener = null;
     }
 
     private void hideOriginalChildren() {
