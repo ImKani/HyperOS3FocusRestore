@@ -181,6 +181,8 @@ public final class SettingsActivity extends Activity {
         button.setMinHeight(dp(40));
         button.setPadding(dp(16), 0, dp(16), 0);
         button.setElevation(dp(6));
+        if (Build.VERSION.SDK_INT >= 21) button.setStateListAnimator(null);
+        button.setTranslationZ(0f);
         button.setContentDescription("保存设置");
         button.setOnClickListener(v -> saveSettings());
         return button;
@@ -227,7 +229,7 @@ public final class SettingsActivity extends Activity {
             item.setMinWidth(dp(48));
             item.setPadding(dp(8), 0, dp(8), 0);
             item.setBackground(roundedBg(COLOR_SURFACE_HIGH, 12));
-            item.setElevation(0);
+            flattenButton(item);
             item.setOnClickListener(v -> showPage(page));
             navButtons[i] = item;
             LinearLayout.LayoutParams itemParams = new LinearLayout.LayoutParams(0, -2, 1f);
@@ -336,7 +338,7 @@ public final class SettingsActivity extends Activity {
         forcePackagesButton.setText(forcePackagesLabel());
         forcePackagesButton.setAllCaps(false);
         forcePackagesButton.setTextSize(14);
-        forcePackagesButton.setElevation(0);
+        flattenButton(forcePackagesButton);
         forcePackagesButton.setMinHeight(dp(40));
         forcePackagesButton.setOnClickListener(v -> showForcePackagesDialog());
         islandPanel.addView(forcePackagesButton, matchWrap(0));
@@ -443,7 +445,7 @@ public final class SettingsActivity extends Activity {
         button.setTypeface(button.getTypeface(), 1);
         button.setTextColor(foreground);
         button.setBackground(roundedBg(background, 12));
-        button.setElevation(0);
+        flattenButton(button);
         button.setMinHeight(dp(40));
         button.setPadding(dp(24), 0, dp(24), 0);
         return button;
@@ -614,7 +616,7 @@ public final class SettingsActivity extends Activity {
         clearSearch.setAllCaps(false);
         clearSearch.setTextColor(COLOR_TEXT_SECONDARY);
         clearSearch.setBackgroundColor(Color.TRANSPARENT);
-        clearSearch.setElevation(0);
+        flattenButton(clearSearch);
         clearSearch.setContentDescription("清除搜索内容");
         clearSearch.setVisibility(View.GONE);
         FrameLayout.LayoutParams clearParams = new FrameLayout.LayoutParams(dp(48), dp(48), Gravity.END | Gravity.CENTER_VERTICAL);
@@ -643,7 +645,7 @@ public final class SettingsActivity extends Activity {
         refresh.setAllCaps(false);
         refresh.setTextColor(COLOR_PRIMARY);
         refresh.setBackgroundColor(Color.TRANSPARENT);
-        refresh.setElevation(0);
+        flattenButton(refresh);
         refresh.setMinHeight(dp(40));
         refresh.setPadding(dp(16), 0, dp(16), 0);
         refresh.setOnClickListener(v -> loadDialogApps());
@@ -671,7 +673,7 @@ public final class SettingsActivity extends Activity {
         buttons.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
         Button cancel = new Button(this);
         cancel.setText("取消"); cancel.setAllCaps(false); cancel.setTextColor(COLOR_TEXT_SECONDARY);
-        cancel.setBackgroundColor(Color.TRANSPARENT); cancel.setElevation(0); cancel.setOnClickListener(v -> dialog.dismiss());
+        cancel.setBackgroundColor(Color.TRANSPARENT); flattenButton(cancel); cancel.setOnClickListener(v -> dialog.dismiss());
         cancel.setMinHeight(dp(40));
         cancel.setPadding(dp(16), 0, dp(16), 0);
         buttons.addView(cancel, new LinearLayout.LayoutParams(-2, dp(40)));
@@ -937,9 +939,16 @@ public final class SettingsActivity extends Activity {
     private Drawable inputBackground() {
         GradientDrawable drawable = new GradientDrawable();
         drawable.setColor(COLOR_INPUT_BACKGROUND);
-        drawable.setCornerRadius(dp(4));
+        drawable.setCornerRadius(dp(12));
         drawable.setStroke(dp(1), COLOR_DIVIDER);
         return drawable;
+    }
+
+    private void flattenButton(Button button) {
+        if (button == null) return;
+        button.setElevation(0);
+        button.setTranslationZ(0f);
+        if (Build.VERSION.SDK_INT >= 21) button.setStateListAnimator(null);
     }
 
     private Button createModeButton(String label, int mode) {
@@ -983,6 +992,7 @@ public final class SettingsActivity extends Activity {
         button.setContentDescription(button.getText() + (selected ? "，已选择" : "，未选择"));
         button.setTextColor(selected ? 0xFF041E2F : COLOR_TEXT_SECONDARY);
         button.setBackground(roundedBg(selected ? COLOR_PRIMARY_LIGHT : COLOR_SURFACE_HIGH, 12));
+        flattenButton(button);
     }
 
     private void updateNavButtons(int selected) {
@@ -992,6 +1002,7 @@ public final class SettingsActivity extends Activity {
             boolean active = i == selected;
             button.setSelected(active);
             button.setBackground(roundedBg(active ? COLOR_PRIMARY_LIGHT : COLOR_SURFACE_HIGH, 12));
+            flattenButton(button);
             button.setTextColor(active ? 0xFF041E2F : COLOR_TEXT_SECONDARY);
         }
     }
