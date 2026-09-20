@@ -14,17 +14,17 @@ public class ExperimentalSettingsTest {
         assertFalse(settings.showIslandIcon);
         assertTrue(settings.tintIslandIcon);
         assertFalse(settings.useSmallIconFallback);
-        assertFalse(settings.expandIslandOnClick);
+        assertFalse(settings.notificationRowClickFallback);
     }
 
     @Test
-    public void legacyClickWinsWhenBothModesAreRequested() {
+    public void retiredExpandModeStaysDisabled() {
         FocusRestoreSettings settings = FocusRestoreSettings.withValues(
                 FocusRestoreSettings.HOOK_MODE_OS4, true, 160, 200,
                 false, true, true, true, true,
-                true, true, true, true, true, true, false,
+                true, true, true, true, true, false, true,
                 "·", "·", Collections.<String>emptySet());
         assertTrue(settings.allowFocusClick);
-        assertFalse(settings.expandIslandOnClick);
+        assertTrue(settings.notificationRowClickFallback);
     }
 }

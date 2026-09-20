@@ -129,13 +129,14 @@ public final class SettingsActivity extends Activity {
     private Switch showIslandIconSwitch;
     private Switch tintIslandIconSwitch;
     private Switch useSmallIconFallbackSwitch;
-    private Switch expandIslandOnClickSwitch;
+    private Switch notificationRowClickFallbackSwitch;
     private EditText generalSeparatorInput;
     private EditText sideSeparatorInput;
     private boolean pendingManual, pendingCompatRetry, pendingMarqueeBounce, pendingIslandCompat,
             pendingDisableIslandProperty, pendingDisableIslandFeatureCache, pendingAllowFocusClick,
             pendingHideNotificationIcons, pendingShowFocusDivider, pendingShowIslandIcon,
-            pendingTintIslandIcon, pendingUseSmallIconFallback, pendingExpandIslandOnClick;
+            pendingTintIslandIcon, pendingUseSmallIconFallback,
+            pendingNotificationRowClickFallback;
     private int pendingHookMode, pendingWidthDp, pendingDelayMs;
     private String pendingGeneralSeparator, pendingSideSeparator;
     private Set<String> pendingForcePackages = new HashSet<>();
@@ -447,9 +448,10 @@ public final class SettingsActivity extends Activity {
         root.addView(sectionHeader("点击行为"), matchWrap(dp(8)));
         LinearLayout interactionPanel = panel();
         allowFocusClickSwitch = createSwitch("旧版：打开通知内容（实验性）");
-        expandIslandOnClickSwitch = createSwitch("点击后展开超级岛通知（实验性）");
+        notificationRowClickFallbackSwitch = createSwitch(
+                "直接打开失败时模拟通知列表点击（实验性）");
         interactionPanel.addView(allowFocusClickSwitch, matchWrap(dp(4)));
-        interactionPanel.addView(expandIslandOnClickSwitch, matchWrap(0));
+        interactionPanel.addView(notificationRowClickFallbackSwitch, matchWrap(0));
         root.addView(interactionPanel, matchWrap(dp(12)));
 
         root.addView(sectionHeader("滚动与兼容"), matchWrap(dp(8)));
@@ -484,7 +486,7 @@ public final class SettingsActivity extends Activity {
         tintIslandIconSwitch.setChecked(pendingTintIslandIcon);
         useSmallIconFallbackSwitch.setChecked(pendingUseSmallIconFallback);
         allowFocusClickSwitch.setChecked(pendingAllowFocusClick);
-        expandIslandOnClickSwitch.setChecked(pendingExpandIslandOnClick);
+        notificationRowClickFallbackSwitch.setChecked(pendingNotificationRowClickFallback);
         marqueeBounceSwitch.setChecked(pendingMarqueeBounce);
         compatRetrySwitch.setChecked(pendingCompatRetry);
         delaySeekBar.setProgress(pendingDelayMs / 100);
@@ -564,7 +566,7 @@ public final class SettingsActivity extends Activity {
         outState.putBoolean("m3.showIslandIcon", pendingShowIslandIcon);
         outState.putBoolean("m3.tintIslandIcon", pendingTintIslandIcon);
         outState.putBoolean("m3.useSmallIconFallback", pendingUseSmallIconFallback);
-        outState.putBoolean("m3.expandIsland", pendingExpandIslandOnClick);
+        outState.putBoolean("m3.rowClickFallback", pendingNotificationRowClickFallback);
         outState.putString("m3.general", pendingGeneralSeparator);
         outState.putString("m3.side", pendingSideSeparator);
         outState.putStringArrayList("m3.packages", new ArrayList<>(pendingForcePackages));
@@ -592,8 +594,8 @@ public final class SettingsActivity extends Activity {
         pendingTintIslandIcon = state.getBoolean("m3.tintIslandIcon", pendingTintIslandIcon);
         pendingUseSmallIconFallback = state.getBoolean("m3.useSmallIconFallback",
                 pendingUseSmallIconFallback);
-        pendingExpandIslandOnClick = state.getBoolean("m3.expandIsland",
-                pendingExpandIslandOnClick) && !pendingAllowFocusClick;
+        pendingNotificationRowClickFallback = state.getBoolean("m3.rowClickFallback",
+                pendingNotificationRowClickFallback);
         pendingGeneralSeparator = state.getString("m3.general", pendingGeneralSeparator);
         pendingSideSeparator = state.getString("m3.side", pendingSideSeparator);
         ArrayList<String> packages = state.getStringArrayList("m3.packages");
@@ -652,19 +654,11 @@ public final class SettingsActivity extends Activity {
         }
         if (allowFocusClickSwitch != null) allowFocusClickSwitch.setOnCheckedChangeListener((b, c) -> {
             pendingAllowFocusClick = c;
-            if (c) {
-                pendingExpandIslandOnClick = false;
-                if (expandIslandOnClickSwitch != null) expandIslandOnClickSwitch.setChecked(false);
-            }
             markPending();
         });
-        if (expandIslandOnClickSwitch != null) {
-            expandIslandOnClickSwitch.setOnCheckedChangeListener((b, c) -> {
-                pendingExpandIslandOnClick = c;
-                if (c) {
-                    pendingAllowFocusClick = false;
-                    if (allowFocusClickSwitch != null) allowFocusClickSwitch.setChecked(false);
-                }
+        if (notificationRowClickFallbackSwitch != null) {
+            notificationRowClickFallbackSwitch.setOnCheckedChangeListener((b, c) -> {
+                pendingNotificationRowClickFallback = c;
                 markPending();
             });
         }
@@ -693,7 +687,7 @@ public final class SettingsActivity extends Activity {
         setModeSpecificSwitchEnabled(showIslandIconSwitch, islandIconEnabled);
         setModeSpecificSwitchEnabled(tintIslandIconSwitch, true);
         setModeSpecificSwitchEnabled(useSmallIconFallbackSwitch, pendingIslandCompat);
-        setModeSpecificSwitchEnabled(expandIslandOnClickSwitch, true);
+        setModeSpecificSwitchEnabled(notificationRowClickFallbackSwitch, true);
     }
 
     private void updateWidthControls() {
@@ -1020,7 +1014,7 @@ public final class SettingsActivity extends Activity {
         pendingShowIslandIcon = settings.showIslandIcon;
         pendingTintIslandIcon = settings.tintIslandIcon;
         pendingUseSmallIconFallback = settings.useSmallIconFallback;
-        pendingExpandIslandOnClick = settings.expandIslandOnClick;
+        pendingNotificationRowClickFallback = settings.notificationRowClickFallback;
         pendingGeneralSeparator = settings.islandGeneralSeparator;
         pendingSideSeparator = settings.islandSideSeparator;
         pendingForcePackages = new HashSet<>(settings.islandForcePackages);
@@ -1040,10 +1034,8 @@ public final class SettingsActivity extends Activity {
                 pendingDisableIslandFeatureCache, pendingAllowFocusClick,
                 pendingHideNotificationIcons, pendingShowFocusDivider,
                 pendingShowIslandIcon, pendingTintIslandIcon,
-                pendingExpandIslandOnClick, pendingUseSmallIconFallback,
-                pendingGeneralSeparator, pendingSideSeparator, pendingForcePackages);
+                pendingUseSmallIconFallback, pendingNotificationRowClickFallback, pendingGeneralSeparator, pendingSideSeparator, pendingForcePackages);
         pendingForcePackages = new HashSet<>(settings.islandForcePackages);
-        pendingExpandIslandOnClick = settings.expandIslandOnClick;
         updateForcePackagesButton();
         long generation;
         synchronized (STORE_WRITE_LOCK) {

@@ -22,6 +22,7 @@ final class SettingsContract {
     static final int TINT_ISLAND_ICON = 17;
     static final int EXPAND_ISLAND_ON_CLICK = 18;
     static final int USE_SMALL_ICON_FALLBACK = 19;
+    static final int NOTIFICATION_ROW_CLICK_FALLBACK = 20;
 
     static final String[] COLUMNS = {
             "limit_text_width", "text_width_dp", "marquee_delay_ms", "compat_retry",
@@ -30,7 +31,7 @@ final class SettingsContract {
             "disable_island_property", "disable_island_feature_cache", "marquee_bounce",
             "hook_mode", "hide_notification_icons", "show_focus_divider",
             "show_island_icon", "tint_island_icon", "expand_island_on_click",
-            "use_small_icon_fallback"
+            "use_small_icon_fallback", "notification_row_click_fallback"
     };
 
     private SettingsContract() {

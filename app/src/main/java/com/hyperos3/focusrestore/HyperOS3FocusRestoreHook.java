@@ -10,6 +10,7 @@ import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.Looper;
 import android.os.Parcelable;
 import android.os.SystemClock;
 import android.database.Cursor;
@@ -23,16 +24,13 @@ import android.text.TextUtils;
 import android.util.Log;
 import android.widget.RemoteViews;
 import android.widget.TextView;
-import android.view.DisplayCutout;
-import android.view.MotionEvent;
 import android.view.View;
-import android.view.WindowInsets;
 import android.view.ViewGroup;
 import android.view.ViewParent;
 import android.view.animation.LinearInterpolator;
 
 import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
+import java.lang.ref.WeakReference;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -91,8 +89,6 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
     private boolean modeHooksInstalled;
     private int installedHookMode;
     private HyperOS4FocusController os4Controller;
-    private volatile Object dynamicIslandTouchHandler;
-    private volatile Object miuiShadeTouchHandler;
     private Handler mainHandler;
     private TextView pendingMarqueeText;
     private Runnable pendingMarqueeRunnable;
@@ -120,6 +116,8 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
             Collections.synchronizedMap(new WeakHashMap<>());
     private final LinkedHashMap<String, Long> convertedNotificationKeys =
             new LinkedHashMap<>(16, 0.75f, true);
+    private final Map<String, WeakReference<Object>> notificationEntries =
+            Collections.synchronizedMap(new LinkedHashMap<>());
 
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) {
@@ -176,7 +174,7 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
         }
         installedHookMode = currentSettings.hookMode;
         modeHooksInstalled = true;
-        hookDynamicIslandTouchHandler();
+        hookNotificationEntries();
         log("installing configuredMode=OS" + installedHookMode
                 + " settings=" + currentSettings.describe());
         try {
@@ -221,8 +219,8 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
                     }
 
                     @Override
-                    public void expandIsland(View source, String key) {
-                        dispatchIslandTap(source, key, "OS4");
+                    public boolean clickNotificationRow(String key) {
+                        return performNotificationRowClick(key, "OS4");
                     }
                 }, new HyperOS4FocusController.Logger() {
                     @Override
@@ -269,29 +267,68 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
         }
     }
 
-    private void hookDynamicIslandTouchHandler() {
+    private void hookNotificationEntries() {
         try {
-            Class<?> touchHandlerClass = FocusReflection.findClass(classLoader,
-                    "com.miui.systemui.notification.island.DynamicIslandTouchHandlerImpl");
-            XposedBridge.hookAllConstructors(touchHandlerClass, new XC_MethodHook() {
+            Class<?> entryClass = FocusReflection.findClass(classLoader,
+                    "com.android.systemui.statusbar.notification.collection.NotificationEntry");
+            XposedBridge.hookAllConstructors(entryClass, new XC_MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) {
-                    dynamicIslandTouchHandler = param.thisObject;
-                    log("dynamic island touch handler captured");
+                    rememberNotificationEntry(param.thisObject);
                 }
             });
-            Class<?> shadeHandlerClass = FocusReflection.findClass(classLoader,
-                    "com.miui.systemui.shade.MiuiShadeTouchHandlerImpl");
-            XposedBridge.hookAllConstructors(shadeHandlerClass, new XC_MethodHook() {
+            XposedBridge.hookAllMethods(entryClass, "setSbn", new XC_MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) {
-                    miuiShadeTouchHandler = param.thisObject;
-                    log("MIUI shade touch handler captured");
+                    rememberNotificationEntry(param.thisObject);
                 }
             });
+            log("notification entry row fallback hooks installed");
         } catch (Throwable throwable) {
-            error("hookDynamicIslandTouchHandler", throwable);
+            error("hookNotificationEntries", throwable);
         }
+    }
+
+    private void rememberNotificationEntry(Object entry) {
+        if (entry == null) return;
+        try {
+            Object keyValue = XposedHelpers.callMethod(entry, "getKey");
+            if (keyValue instanceof String && !TextUtils.isEmpty((String) keyValue)) {
+                notificationEntries.put((String) keyValue, new WeakReference<>(entry));
+            }
+        } catch (Throwable throwable) {
+            error("remember notification entry", throwable);
+        }
+    }
+
+    private boolean performNotificationRowClick(String key, String mode) {
+        if (TextUtils.isEmpty(key)) return false;
+        WeakReference<Object> reference = notificationEntries.get(key);
+        Object entry = reference == null ? null : reference.get();
+        if (entry == null) {
+            notificationEntries.remove(key);
+            log(mode + " notification row click unavailable key=" + key + " reason=entry");
+            return false;
+        }
+        Object row = getField(entry, "row");
+        if (!(row instanceof View)) {
+            log(mode + " notification row click unavailable key=" + key + " reason=row");
+            return false;
+        }
+        View rowView = (View) row;
+        Handler handler = mainHandler;
+        if (handler == null) return false;
+        if (Looper.myLooper() == handler.getLooper()) {
+            boolean clicked = rowView.performClick();
+            log(mode + " notification row click key=" + key + " result=" + clicked);
+            return clicked;
+        }
+        handler.post(() -> {
+            boolean clicked = rowView.performClick();
+            log(mode + " notification row click key=" + key + " result=" + clicked);
+        });
+        log(mode + " notification row click scheduled key=" + key);
+        return true;
     }
 
     private void hookDynamicIslandSystemProperty() {
@@ -974,163 +1011,29 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
                     new XC_MethodHook() {
                         @Override
                         protected void beforeHookedMethod(MethodHookParam param) {
-                            if (currentSettings.allowFocusClick) return;
                             Object bean = getField(param.thisObject, "mData");
                             FocusData data = inspectBean(bean);
+                            if (currentSettings.allowFocusClick) {
+                                if (currentSettings.notificationRowClickFallback
+                                        && data != null
+                                        && performNotificationRowClick(data.key, "OS3")) {
+                                    param.setResult(null);
+                                }
+                                return;
+                            }
                             boolean converted = convertedBeans.contains(bean)
                                     || isConvertedNotificationKey(data == null ? null : data.key);
                             boolean focus = data != null && (data.isFocus || data.hasExplicitFocusData);
                             if (focus || converted) {
                                 param.setResult(null);
-                                if (currentSettings.expandIslandOnClick
-                                        && param.thisObject instanceof View) {
-                                    dispatchIslandTap((View) param.thisObject,
-                                            data == null ? null : data.key, "OS3");
-                                } else {
-                                    log("ignored focus click key=" + (data == null ? null : data.key)
-                                            + " converted=" + converted);
-                                }
+                                log("ignored focus click key=" + (data == null ? null : data.key)
+                                        + " converted=" + converted);
                             }
                         }
                     });
             log("disabled converted focus click");
         } catch (Throwable t) {
             error("hookDisableConvertedFocusClick", t);
-        }
-    }
-
-    private void dispatchIslandTap(View source, String key, String mode) {
-        MotionEvent down = null;
-        MotionEvent up = null;
-        try {
-            int[] location = new int[2];
-            source.getLocationOnScreen(location);
-            float sourceX = location[0] + source.getWidth() / 2f;
-            float x = resolveIslandTouchX(source);
-            float y = location[1] + source.getHeight() / 2f;
-            long time = SystemClock.uptimeMillis();
-            down = MotionEvent.obtain(time, time, MotionEvent.ACTION_DOWN, x, y, 0);
-            up = MotionEvent.obtain(time, time + 80L, MotionEvent.ACTION_UP, x, y, 0);
-            log(mode + " experimental island tap coordinates key=" + key
-                    + " sourceX=" + sourceX + " islandX=" + x + " y=" + y);
-            if (dispatchViaShadeTouchHandler(down, up, key, mode)) return;
-
-            Class<?> dependencyClass = FocusReflection.findClass(classLoader,
-                    "com.android.systemui.Dependency");
-            Class<?> touchHandlerClass = FocusReflection.findClass(classLoader,
-                    "com.miui.systemui.notification.island.DynamicIslandTouchHandlerImpl");
-            Object touchHandler = dynamicIslandTouchHandler;
-            try {
-                if (touchHandler == null) touchHandler = XposedHelpers.callStaticMethod(
-                        dependencyClass, "get", touchHandlerClass);
-                if (touchHandler == null) {
-                    throw new IllegalStateException("Dependency returned null island touch handler");
-                }
-            } catch (Throwable directFailure) {
-                Class<?> pluginControllerClass = FocusReflection.findClass(classLoader,
-                        "com.android.systemui.statusbar.notification.DynamicIslandPluginController");
-                Object pluginController = XposedHelpers.callStaticMethod(
-                        dependencyClass, "get", pluginControllerClass);
-                touchHandler = XposedHelpers.newInstance(touchHandlerClass, pluginController);
-            }
-            Object downIntercept = XposedHelpers.callMethod(touchHandler,
-                    "onIntercept", down, "status_bar");
-            Object downResult = null;
-            Object upResult = null;
-            if (Boolean.TRUE.equals(downIntercept)) {
-                downResult = XposedHelpers.callMethod(touchHandler,
-                        "onTouch", down, "status_bar");
-                upResult = XposedHelpers.callMethod(touchHandler,
-                        "onTouch", up, "status_bar");
-            }
-            log(mode + " experimental island tap fallback key=" + key
-                    + " downIntercept=" + downIntercept + " down=" + downResult
-                    + " up=" + upResult);
-        } catch (Throwable throwable) {
-            error(mode + " experimental island tap key=" + key, throwable);
-        } finally {
-            if (down != null) down.recycle();
-            if (up != null) up.recycle();
-        }
-    }
-
-    private float resolveIslandTouchX(View source) {
-        float displayCenter = source.getResources().getDisplayMetrics().widthPixels / 2f;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            try {
-                WindowInsets insets = source.getRootWindowInsets();
-                DisplayCutout cutout = insets == null ? null : insets.getDisplayCutout();
-                if (cutout != null) {
-                    java.util.ArrayList<Float> centers = new java.util.ArrayList<>();
-                    for (Rect rect : cutout.getBoundingRects()) {
-                        if (rect != null && !rect.isEmpty()) centers.add(rect.exactCenterX());
-                    }
-                    float[] values = new float[centers.size()];
-                    for (int index = 0; index < centers.size(); index++) {
-                        values[index] = centers.get(index);
-                    }
-                    return IslandTouchCoordinates.chooseX(displayCenter * 2f, values);
-                }
-            } catch (Throwable throwable) {
-                error("resolve island cutout center", throwable);
-            }
-        }
-        return displayCenter;
-    }
-
-    private boolean dispatchViaShadeTouchHandler(MotionEvent down, MotionEvent up,
-                                                  String key, String mode) {
-        try {
-            Object shadeHandler = miuiShadeTouchHandler;
-            if (shadeHandler == null) {
-                Class<?> dependencyClass = FocusReflection.findClass(classLoader,
-                        "com.android.systemui.Dependency");
-                Class<?> shadeHandlerClass = FocusReflection.findClass(classLoader,
-                        "com.miui.systemui.shade.MiuiShadeTouchHandlerImpl");
-                shadeHandler = XposedHelpers.callStaticMethod(
-                        dependencyClass, "get", shadeHandlerClass);
-            }
-            if (shadeHandler == null) return false;
-            Class<?> functionClass = FocusReflection.findClass(classLoader,
-                    "kotlin.jvm.functions.Function1");
-            Class<?> unitClass = FocusReflection.findClass(classLoader, "kotlin.Unit");
-            Object unit = XposedHelpers.getStaticObjectField(unitClass, "INSTANCE");
-            Object noOpCallback = Proxy.newProxyInstance(classLoader,
-                    new Class<?>[]{functionClass}, (proxy, method, args) -> {
-                        if ("invoke".equals(method.getName())) return unit;
-                        if ("hashCode".equals(method.getName())) {
-                            return System.identityHashCode(proxy);
-                        }
-                        if ("equals".equals(method.getName())) {
-                            return args != null && args.length == 1 && proxy == args[0];
-                        }
-                        return "FocusRestoreIslandTouchCallback";
-                    });
-            Object downResult = XposedHelpers.callMethod(shadeHandler,
-                    "handleExternalTouch", down, "status_bar", noOpCallback);
-            Handler handler = mainHandler;
-            if (handler == null) return false;
-            final Object delayedShadeHandler = shadeHandler;
-            final Object delayedCallback = noOpCallback;
-            final MotionEvent delayedUp = MotionEvent.obtain(up);
-            handler.postDelayed(() -> {
-                try {
-                    Object upResult = XposedHelpers.callMethod(delayedShadeHandler,
-                            "handleExternalTouch", delayedUp, "status_bar", delayedCallback);
-                    log(mode + " experimental island tap key=" + key
-                            + " path=shade up=" + upResult + " delayMs=80");
-                } catch (Throwable throwable) {
-                    error(mode + " experimental island up key=" + key, throwable);
-                } finally {
-                    delayedUp.recycle();
-                }
-            }, 80L);
-            log(mode + " experimental island tap key=" + key
-                    + " path=shade down=" + downResult + " up=scheduled");
-            return true;
-        } catch (Throwable throwable) {
-            error(mode + " experimental shade tap fallback key=" + key, throwable);
-            return false;
         }
     }
 
@@ -1896,6 +1799,7 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
     }
 
     private HyperOS4FocusController.DisplayItem createOS4DisplayItem(Object entry) {
+        rememberNotificationEntry(entry);
         reloadSettings(false);
         Object expanded = getField(entry, "mSbn");
         if (expanded == null) expanded = getField(entry, "sbn");

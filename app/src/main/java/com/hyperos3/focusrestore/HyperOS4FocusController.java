@@ -38,7 +38,7 @@ final class HyperOS4FocusController {
     interface ItemFactory {
         DisplayItem create(Object notificationEntry);
         HookSettings settings();
-        void expandIsland(View source, String key);
+        boolean clickNotificationRow(String key);
     }
 
     interface Logger {
@@ -569,7 +569,7 @@ final class HyperOS4FocusController {
                     + " showFocusDivider=" + settings.showFocusDivider
                     + " tint=0x" + Integer.toHexString(currentTint)
                     + " legacyClick=" + settings.allowFocusClick
-                    + " expandIslandClick=" + settings.expandIslandOnClick);
+                    + " rowClickFallback=" + settings.notificationRowClickFallback);
         }
     }
 
@@ -810,8 +810,9 @@ final class HyperOS4FocusController {
         private int contentInsetPx;
         private int maxWidthPx = Integer.MAX_VALUE;
         private boolean blockClicks = true;
-        private boolean expandIslandClicks;
+        private boolean notificationRowClicks;
         private String currentItemKey;
+        private PendingIntent currentContentIntent;
 
         FocusHostView(Context context) {
             super(context);
@@ -821,10 +822,12 @@ final class HyperOS4FocusController {
 
         void showContent(View nextContent, DisplayItem item, HookSettings settings) {
             clearContent();
-            blockClicks = !settings.allowFocusClick && !settings.expandIslandOnClick;
-            expandIslandClicks = settings.expandIslandOnClick;
+            blockClicks = !settings.allowFocusClick;
+            notificationRowClicks = settings.allowFocusClick
+                    && settings.notificationRowClickFallback;
             currentItemKey = item.key;
-            setClickable(expandIslandClicks);
+            currentContentIntent = item.contentIntent;
+            setClickable(notificationRowClicks);
             float density = getResources().getDisplayMetrics().density;
             maxWidthPx = settings.limitWidth
                     ? Math.max(1, Math.round(settings.widthDp * density)) : Integer.MAX_VALUE;
@@ -890,7 +893,10 @@ final class HyperOS4FocusController {
         }
 
         private void bindClick(View target, DisplayItem item, HookSettings settings) {
-            if (settings.allowFocusClick && item.contentIntent != null) {
+            if (!settings.allowFocusClick) return;
+            if (settings.notificationRowClickFallback) {
+                target.setOnClickListener(view -> itemFactory.clickNotificationRow(item.key));
+            } else if (item.contentIntent != null) {
                 target.setOnClickListener(view -> send(item.contentIntent, item.key));
             }
         }
@@ -919,8 +925,9 @@ final class HyperOS4FocusController {
             currentIcon = null;
             currentIconSizeDp = 0;
             contentInsetPx = 0;
-            expandIslandClicks = false;
+            notificationRowClicks = false;
             currentItemKey = null;
+            currentContentIntent = null;
             setClickable(false);
         }
 
@@ -998,13 +1005,13 @@ final class HyperOS4FocusController {
 
         @Override
         public boolean onInterceptTouchEvent(MotionEvent event) {
-            return blockClicks || expandIslandClicks || super.onInterceptTouchEvent(event);
+            return blockClicks || notificationRowClicks || super.onInterceptTouchEvent(event);
         }
 
         @Override
         public boolean onTouchEvent(MotionEvent event) {
             if (blockClicks) return true;
-            if (expandIslandClicks) {
+            if (notificationRowClicks) {
                 if (event.getActionMasked() == MotionEvent.ACTION_UP) performClick();
                 return true;
             }
@@ -1013,9 +1020,12 @@ final class HyperOS4FocusController {
 
         @Override
         public boolean performClick() {
-            if (expandIslandClicks) {
+            if (notificationRowClicks) {
                 super.performClick();
-                itemFactory.expandIsland(this, currentItemKey);
+                if (!itemFactory.clickNotificationRow(currentItemKey)
+                        && currentContentIntent != null) {
+                    send(currentContentIntent, currentItemKey);
+                }
                 return true;
             }
             return super.performClick();

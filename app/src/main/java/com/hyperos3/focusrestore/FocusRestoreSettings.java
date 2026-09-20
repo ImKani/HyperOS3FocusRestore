@@ -31,6 +31,7 @@ public final class FocusRestoreSettings {
     public static final String KEY_TINT_ISLAND_ICON = "tint_island_icon";
     public static final String KEY_EXPAND_ISLAND_ON_CLICK = "expand_island_on_click";
     public static final String KEY_USE_SMALL_ICON_FALLBACK = "use_small_icon_fallback";
+    public static final String KEY_NOTIFICATION_ROW_CLICK_FALLBACK = "notification_row_click_fallback";
     static final String KEY_HOOK_SETTINGS_READY = "hook_settings_ready";
     static final String KEY_SETTINGS_GENERATION = "settings_generation";
     public static final String PACKAGE_SET_SEPARATOR = "\u001f";
@@ -54,8 +55,8 @@ public final class FocusRestoreSettings {
     public static final boolean DEFAULT_SHOW_FOCUS_DIVIDER = true;
     public static final boolean DEFAULT_SHOW_ISLAND_ICON = false;
     public static final boolean DEFAULT_TINT_ISLAND_ICON = true;
-    public static final boolean DEFAULT_EXPAND_ISLAND_ON_CLICK = false;
     public static final boolean DEFAULT_USE_SMALL_ICON_FALLBACK = false;
+    public static final boolean DEFAULT_NOTIFICATION_ROW_CLICK_FALLBACK = false;
     public static final String DEFAULT_ISLAND_SEPARATOR = "·";
 
     public final int hookMode;
@@ -72,8 +73,8 @@ public final class FocusRestoreSettings {
     public final boolean showFocusDivider;
     public final boolean showIslandIcon;
     public final boolean tintIslandIcon;
-    public final boolean expandIslandOnClick;
     public final boolean useSmallIconFallback;
+    public final boolean notificationRowClickFallback;
     public final String islandGeneralSeparator;
     public final String islandSideSeparator;
     public final Set<String> islandForcePackages;
@@ -83,8 +84,8 @@ public final class FocusRestoreSettings {
                                  boolean disableIslandProperty, boolean disableIslandFeatureCache,
                                  boolean allowFocusClick, boolean hideNotificationIcons,
                                  boolean showFocusDivider, boolean showIslandIcon,
-                                 boolean tintIslandIcon, boolean expandIslandOnClick,
-                                 boolean useSmallIconFallback,
+                                 boolean tintIslandIcon, boolean useSmallIconFallback,
+                                 boolean notificationRowClickFallback,
                                  String islandGeneralSeparator,
                                  String islandSideSeparator,
                                  Set<String> islandForcePackages) {
@@ -102,8 +103,8 @@ public final class FocusRestoreSettings {
         this.showFocusDivider = showFocusDivider;
         this.showIslandIcon = showIslandIcon;
         this.tintIslandIcon = tintIslandIcon;
-        this.expandIslandOnClick = allowFocusClick ? false : expandIslandOnClick;
         this.useSmallIconFallback = useSmallIconFallback;
+        this.notificationRowClickFallback = notificationRowClickFallback;
         this.islandGeneralSeparator = valueOrDefault(islandGeneralSeparator);
         this.islandSideSeparator = valueOrDefault(islandSideSeparator);
         this.islandForcePackages = immutablePackages(islandForcePackages);
@@ -116,8 +117,8 @@ public final class FocusRestoreSettings {
                 DEFAULT_DISABLE_ISLAND_PROPERTY, DEFAULT_DISABLE_ISLAND_FEATURE_CACHE,
                 DEFAULT_ALLOW_FOCUS_CLICK, DEFAULT_HIDE_NOTIFICATION_ICONS,
                 DEFAULT_SHOW_FOCUS_DIVIDER, DEFAULT_SHOW_ISLAND_ICON,
-                DEFAULT_TINT_ISLAND_ICON, DEFAULT_EXPAND_ISLAND_ON_CLICK,
-                DEFAULT_USE_SMALL_ICON_FALLBACK, DEFAULT_ISLAND_SEPARATOR,
+                DEFAULT_TINT_ISLAND_ICON, DEFAULT_USE_SMALL_ICON_FALLBACK, DEFAULT_NOTIFICATION_ROW_CLICK_FALLBACK,
+                DEFAULT_ISLAND_SEPARATOR,
                 DEFAULT_ISLAND_SEPARATOR,
                 Collections.<String>emptySet());
     }
@@ -133,8 +134,8 @@ public final class FocusRestoreSettings {
                                                    boolean showFocusDivider,
                                                    boolean showIslandIcon,
                                                    boolean tintIslandIcon,
-                                                   boolean expandIslandOnClick,
                                                    boolean useSmallIconFallback,
+                                                   boolean notificationRowClickFallback,
                                                    String islandGeneralSeparator,
                                                    String islandSideSeparator,
                                                    Set<String> islandForcePackages) {
@@ -142,8 +143,9 @@ public final class FocusRestoreSettings {
                 compatRetry, marqueeBounce,
                 islandCompat, disableIslandProperty, disableIslandFeatureCache,
                 allowFocusClick, hideNotificationIcons, showFocusDivider,
-                showIslandIcon, tintIslandIcon, expandIslandOnClick,
-                useSmallIconFallback, islandGeneralSeparator, islandSideSeparator, islandForcePackages);
+                showIslandIcon, tintIslandIcon, useSmallIconFallback,
+                notificationRowClickFallback,
+                islandGeneralSeparator, islandSideSeparator, islandForcePackages);
     }
 
     public static SharedPreferences hookPreferences(Context context) {
@@ -176,10 +178,10 @@ public final class FocusRestoreSettings {
                 preferences.getBoolean(KEY_SHOW_FOCUS_DIVIDER, DEFAULT_SHOW_FOCUS_DIVIDER),
                 preferences.getBoolean(KEY_SHOW_ISLAND_ICON, DEFAULT_SHOW_ISLAND_ICON),
                 preferences.getBoolean(KEY_TINT_ISLAND_ICON, DEFAULT_TINT_ISLAND_ICON),
-                preferences.getBoolean(KEY_EXPAND_ISLAND_ON_CLICK,
-                        DEFAULT_EXPAND_ISLAND_ON_CLICK),
                 preferences.getBoolean(KEY_USE_SMALL_ICON_FALLBACK,
                         DEFAULT_USE_SMALL_ICON_FALLBACK),
+                preferences.getBoolean(KEY_NOTIFICATION_ROW_CLICK_FALLBACK,
+                        DEFAULT_NOTIFICATION_ROW_CLICK_FALLBACK),
                 preferences.getString(KEY_ISLAND_GENERAL_SEPARATOR, legacy),
                 preferences.getString(KEY_ISLAND_SIDE_SEPARATOR, legacy),
                 preferences.getStringSet(KEY_ISLAND_FORCE_PACKAGES, Collections.<String>emptySet()));
@@ -196,8 +198,9 @@ public final class FocusRestoreSettings {
                 + " showFocusDivider=" + showFocusDivider
                 + " showIslandIcon=" + showIslandIcon
                 + " tintIslandIcon=" + tintIslandIcon
-                + " expandIslandOnClick=" + expandIslandOnClick
+                + " expandIslandOnClick=false(deprecated)"
                 + " useSmallIconFallback=" + useSmallIconFallback
+                + " notificationRowClickFallback=" + notificationRowClickFallback
                 + " forcePackages=" + islandForcePackages
                 + " islandSeparator=" + displaySeparator(islandGeneralSeparator)
                 + " islandSideSeparator=" + displaySeparator(islandSideSeparator);
@@ -223,8 +226,9 @@ public final class FocusRestoreSettings {
                 .putBoolean(KEY_SHOW_FOCUS_DIVIDER, showFocusDivider)
                 .putBoolean(KEY_SHOW_ISLAND_ICON, showIslandIcon)
                 .putBoolean(KEY_TINT_ISLAND_ICON, tintIslandIcon)
-                .putBoolean(KEY_EXPAND_ISLAND_ON_CLICK, expandIslandOnClick)
+                .putBoolean(KEY_EXPAND_ISLAND_ON_CLICK, false)
                 .putBoolean(KEY_USE_SMALL_ICON_FALLBACK, useSmallIconFallback)
+                .putBoolean(KEY_NOTIFICATION_ROW_CLICK_FALLBACK, notificationRowClickFallback)
                 .putString(KEY_ISLAND_GENERAL_SEPARATOR, islandGeneralSeparator)
                 .putString(KEY_ISLAND_SIDE_SEPARATOR, islandSideSeparator)
                 .putString(KEY_ISLAND_SEPARATOR, islandGeneralSeparator)

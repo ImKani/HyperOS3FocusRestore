@@ -54,8 +54,9 @@ public final class SettingsProvider extends ContentProvider {
                 settings.showFocusDivider ? 1 : 0,
                 settings.showIslandIcon ? 1 : 0,
                 settings.tintIslandIcon ? 1 : 0,
-                settings.expandIslandOnClick ? 1 : 0,
-                settings.useSmallIconFallback ? 1 : 0});
+                0,
+                settings.useSmallIconFallback ? 1 : 0,
+                settings.notificationRowClickFallback ? 1 : 0});
         return cursor;
     }
 
