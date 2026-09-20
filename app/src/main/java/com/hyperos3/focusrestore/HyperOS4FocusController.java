@@ -38,7 +38,7 @@ final class HyperOS4FocusController {
     interface ItemFactory {
         DisplayItem create(Object notificationEntry);
         HookSettings settings();
-        boolean clickNotificationRow(String key);
+        boolean clickNotificationRow(Object notificationEntry, String key);
     }
 
     interface Logger {
@@ -47,6 +47,7 @@ final class HyperOS4FocusController {
     }
 
     static final class DisplayItem {
+        final Object notificationEntry;
         final String key;
         final String packageName;
         final String text;
@@ -63,11 +64,12 @@ final class HyperOS4FocusController {
         final int priority;
         long updateSequence;
 
-        DisplayItem(String key, String packageName, String text, String source,
+        DisplayItem(Object notificationEntry, String key, String packageName, String text, String source,
                     RemoteViews remoteViews, RemoteViews remoteViewsNight,
                     PendingIntent contentIntent, Icon icon, Icon iconDark,
                     boolean tintIcon, boolean tintIconDark,
                     boolean islandIcon, boolean islandIconDark, int priority) {
+            this.notificationEntry = notificationEntry;
             this.key = key;
             this.packageName = packageName;
             this.text = text;
@@ -812,6 +814,7 @@ final class HyperOS4FocusController {
         private boolean blockClicks = true;
         private boolean notificationRowClicks;
         private String currentItemKey;
+        private Object currentNotificationEntry;
         private PendingIntent currentContentIntent;
 
         FocusHostView(Context context) {
@@ -826,6 +829,7 @@ final class HyperOS4FocusController {
             notificationRowClicks = settings.allowFocusClick
                     && settings.notificationRowClickFallback;
             currentItemKey = item.key;
+            currentNotificationEntry = item.notificationEntry;
             currentContentIntent = item.contentIntent;
             setClickable(notificationRowClicks);
             float density = getResources().getDisplayMetrics().density;
@@ -895,7 +899,8 @@ final class HyperOS4FocusController {
         private void bindClick(View target, DisplayItem item, HookSettings settings) {
             if (!settings.allowFocusClick) return;
             if (settings.notificationRowClickFallback) {
-                target.setOnClickListener(view -> itemFactory.clickNotificationRow(item.key));
+                target.setOnClickListener(view -> itemFactory.clickNotificationRow(
+                        item.notificationEntry, item.key));
             } else if (item.contentIntent != null) {
                 target.setOnClickListener(view -> send(item.contentIntent, item.key));
             }
@@ -927,6 +932,7 @@ final class HyperOS4FocusController {
             contentInsetPx = 0;
             notificationRowClicks = false;
             currentItemKey = null;
+            currentNotificationEntry = null;
             currentContentIntent = null;
             setClickable(false);
         }
@@ -1022,7 +1028,7 @@ final class HyperOS4FocusController {
         public boolean performClick() {
             if (notificationRowClicks) {
                 super.performClick();
-                if (!itemFactory.clickNotificationRow(currentItemKey)
+                if (!itemFactory.clickNotificationRow(currentNotificationEntry, currentItemKey)
                         && currentContentIntent != null) {
                     send(currentContentIntent, currentItemKey);
                 }

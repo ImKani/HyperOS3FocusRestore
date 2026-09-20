@@ -219,8 +219,8 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
                     }
 
                     @Override
-                    public boolean clickNotificationRow(String key) {
-                        return performNotificationRowClick(key, "OS4");
+                    public boolean clickNotificationRow(Object notificationEntry, String key) {
+                        return performNotificationRowClick(notificationEntry, key, "OS4");
                     }
                 }, new HyperOS4FocusController.Logger() {
                     @Override
@@ -301,10 +301,11 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
         }
     }
 
-    private boolean performNotificationRowClick(String key, String mode) {
-        if (TextUtils.isEmpty(key)) return false;
+    private boolean performNotificationRowClick(Object directEntry, String key, String mode) {
+        if (TextUtils.isEmpty(key) && directEntry == null) return false;
+        Object entry = directEntry;
         WeakReference<Object> reference = notificationEntries.get(key);
-        Object entry = reference == null ? null : reference.get();
+        if (entry == null) entry = reference == null ? null : reference.get();
         if (entry == null) {
             notificationEntries.remove(key);
             log(mode + " notification row click unavailable key=" + key + " reason=entry");
@@ -1016,7 +1017,7 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
                             if (currentSettings.allowFocusClick) {
                                 if (currentSettings.notificationRowClickFallback
                                         && data != null
-                                        && performNotificationRowClick(data.key, "OS3")) {
+                                        && performNotificationRowClick(null, data.key, "OS3")) {
                                     param.setResult(null);
                                 }
                                 return;
@@ -1855,7 +1856,7 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
             log("OS4 native focus icon key=" + key + " light="
                     + (focusIcon == null ? "none" : focusIcon.source) + " dark="
                     + (focusIconDark == null ? "none" : focusIconDark.source));
-            return new HyperOS4FocusController.DisplayItem(key, data.packageName,
+            return new HyperOS4FocusController.DisplayItem(entry, key, data.packageName,
                     cleanText(data.ticker), "nativeFocus", data.barRv, data.barNightRv,
                     contentIntent, focusIcon == null ? null : focusIcon.icon,
                     focusIconDark == null ? null : focusIconDark.icon,
@@ -1893,7 +1894,7 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
         log("OS4 island focus icon key=" + key + " light="
                 + (focusIcon == null ? "none" : focusIcon.source) + " dark="
                 + (focusIconDark == null ? "none" : focusIconDark.source));
-        return new HyperOS4FocusController.DisplayItem(key, data.packageName,
+        return new HyperOS4FocusController.DisplayItem(entry, key, data.packageName,
                 islandText.text, source, null, null, contentIntent,
                 focusIcon == null ? null : focusIcon.icon,
                 focusIconDark == null ? null : focusIconDark.icon,
