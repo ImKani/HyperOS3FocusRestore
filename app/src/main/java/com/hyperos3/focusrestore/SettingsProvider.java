@@ -47,11 +47,14 @@ public final class SettingsProvider extends ContentProvider {
                 settings.islandCompat ? 1 : 0, legacySeparator,
                 settings.allowFocusClick ? 1 : 0, settings.islandGeneralSeparator,
                 settings.islandSideSeparator, joinPackages(settings.islandForcePackages),
-                 settings.disableIslandProperty ? 1 : 0,
-                 settings.disableIslandFeatureCache ? 1 : 0,
-                  settings.marqueeBounce ? 1 : 0, settings.hookMode,
-                  settings.hideNotificationIcons ? 1 : 0,
-                   settings.showFocusDivider ? 1 : 0});
+                settings.disableIslandProperty ? 1 : 0,
+                settings.disableIslandFeatureCache ? 1 : 0,
+                settings.marqueeBounce ? 1 : 0, settings.hookMode,
+                settings.hideNotificationIcons ? 1 : 0,
+                settings.showFocusDivider ? 1 : 0,
+                settings.showIslandIcon ? 1 : 0,
+                settings.tintIslandIcon ? 1 : 0,
+                settings.expandIslandOnClick ? 1 : 0});
         return cursor;
     }
 

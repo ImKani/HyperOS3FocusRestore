@@ -27,6 +27,9 @@ public final class FocusRestoreSettings {
     public static final String KEY_HOOK_MODE = "hook_mode";
     public static final String KEY_HIDE_NOTIFICATION_ICONS = "hide_notification_icons";
     public static final String KEY_SHOW_FOCUS_DIVIDER = "show_focus_divider";
+    public static final String KEY_SHOW_ISLAND_ICON = "show_island_icon";
+    public static final String KEY_TINT_ISLAND_ICON = "tint_island_icon";
+    public static final String KEY_EXPAND_ISLAND_ON_CLICK = "expand_island_on_click";
     static final String KEY_HOOK_SETTINGS_READY = "hook_settings_ready";
     static final String KEY_SETTINGS_GENERATION = "settings_generation";
     public static final String PACKAGE_SET_SEPARATOR = "\u001f";
@@ -48,6 +51,9 @@ public final class FocusRestoreSettings {
     public static final boolean DEFAULT_ALLOW_FOCUS_CLICK = false;
     public static final boolean DEFAULT_HIDE_NOTIFICATION_ICONS = true;
     public static final boolean DEFAULT_SHOW_FOCUS_DIVIDER = true;
+    public static final boolean DEFAULT_SHOW_ISLAND_ICON = false;
+    public static final boolean DEFAULT_TINT_ISLAND_ICON = false;
+    public static final boolean DEFAULT_EXPAND_ISLAND_ON_CLICK = false;
     public static final String DEFAULT_ISLAND_SEPARATOR = "·";
 
     public final int hookMode;
@@ -62,6 +68,9 @@ public final class FocusRestoreSettings {
     public final boolean allowFocusClick;
     public final boolean hideNotificationIcons;
     public final boolean showFocusDivider;
+    public final boolean showIslandIcon;
+    public final boolean tintIslandIcon;
+    public final boolean expandIslandOnClick;
     public final String islandGeneralSeparator;
     public final String islandSideSeparator;
     public final Set<String> islandForcePackages;
@@ -70,7 +79,9 @@ public final class FocusRestoreSettings {
                                  boolean compatRetry, boolean marqueeBounce, boolean islandCompat,
                                  boolean disableIslandProperty, boolean disableIslandFeatureCache,
                                  boolean allowFocusClick, boolean hideNotificationIcons,
-                                 boolean showFocusDivider, String islandGeneralSeparator,
+                                 boolean showFocusDivider, boolean showIslandIcon,
+                                 boolean tintIslandIcon, boolean expandIslandOnClick,
+                                 String islandGeneralSeparator,
                                  String islandSideSeparator,
                                  Set<String> islandForcePackages) {
         this.hookMode = normalizeHookMode(hookMode);
@@ -85,6 +96,9 @@ public final class FocusRestoreSettings {
         this.allowFocusClick = allowFocusClick;
         this.hideNotificationIcons = hideNotificationIcons;
         this.showFocusDivider = showFocusDivider;
+        this.showIslandIcon = showIslandIcon;
+        this.tintIslandIcon = tintIslandIcon;
+        this.expandIslandOnClick = allowFocusClick ? false : expandIslandOnClick;
         this.islandGeneralSeparator = valueOrDefault(islandGeneralSeparator);
         this.islandSideSeparator = valueOrDefault(islandSideSeparator);
         this.islandForcePackages = immutablePackages(islandForcePackages);
@@ -96,23 +110,33 @@ public final class FocusRestoreSettings {
                 DEFAULT_ISLAND_COMPAT,
                 DEFAULT_DISABLE_ISLAND_PROPERTY, DEFAULT_DISABLE_ISLAND_FEATURE_CACHE,
                 DEFAULT_ALLOW_FOCUS_CLICK, DEFAULT_HIDE_NOTIFICATION_ICONS,
-                DEFAULT_SHOW_FOCUS_DIVIDER, DEFAULT_ISLAND_SEPARATOR,
+                DEFAULT_SHOW_FOCUS_DIVIDER, DEFAULT_SHOW_ISLAND_ICON,
+                DEFAULT_TINT_ISLAND_ICON, DEFAULT_EXPAND_ISLAND_ON_CLICK,
+                DEFAULT_ISLAND_SEPARATOR,
                 DEFAULT_ISLAND_SEPARATOR,
                 Collections.<String>emptySet());
     }
 
     public static FocusRestoreSettings withValues(int hookMode, boolean limitWidth, int widthDp,
                                                    int marqueeDelayMs,
-                                                  boolean compatRetry, boolean marqueeBounce, boolean islandCompat,
-                                                  boolean disableIslandProperty, boolean disableIslandFeatureCache,
-                                                  boolean allowFocusClick, boolean hideNotificationIcons,
-                                                  boolean showFocusDivider, String islandGeneralSeparator,
-                                                  String islandSideSeparator,
-                                                  Set<String> islandForcePackages) {
+                                                   boolean compatRetry, boolean marqueeBounce,
+                                                   boolean islandCompat,
+                                                   boolean disableIslandProperty,
+                                                   boolean disableIslandFeatureCache,
+                                                   boolean allowFocusClick,
+                                                   boolean hideNotificationIcons,
+                                                   boolean showFocusDivider,
+                                                   boolean showIslandIcon,
+                                                   boolean tintIslandIcon,
+                                                   boolean expandIslandOnClick,
+                                                   String islandGeneralSeparator,
+                                                   String islandSideSeparator,
+                                                   Set<String> islandForcePackages) {
         return new FocusRestoreSettings(hookMode, limitWidth, widthDp, marqueeDelayMs,
                 compatRetry, marqueeBounce,
                 islandCompat, disableIslandProperty, disableIslandFeatureCache,
                 allowFocusClick, hideNotificationIcons, showFocusDivider,
+                showIslandIcon, tintIslandIcon, expandIslandOnClick,
                 islandGeneralSeparator, islandSideSeparator, islandForcePackages);
     }
 
@@ -144,6 +168,10 @@ public final class FocusRestoreSettings {
                 preferences.getBoolean(KEY_ALLOW_FOCUS_CLICK, DEFAULT_ALLOW_FOCUS_CLICK),
                 preferences.getBoolean(KEY_HIDE_NOTIFICATION_ICONS, DEFAULT_HIDE_NOTIFICATION_ICONS),
                 preferences.getBoolean(KEY_SHOW_FOCUS_DIVIDER, DEFAULT_SHOW_FOCUS_DIVIDER),
+                preferences.getBoolean(KEY_SHOW_ISLAND_ICON, DEFAULT_SHOW_ISLAND_ICON),
+                preferences.getBoolean(KEY_TINT_ISLAND_ICON, DEFAULT_TINT_ISLAND_ICON),
+                preferences.getBoolean(KEY_EXPAND_ISLAND_ON_CLICK,
+                        DEFAULT_EXPAND_ISLAND_ON_CLICK),
                 preferences.getString(KEY_ISLAND_GENERAL_SEPARATOR, legacy),
                 preferences.getString(KEY_ISLAND_SIDE_SEPARATOR, legacy),
                 preferences.getStringSet(KEY_ISLAND_FORCE_PACKAGES, Collections.<String>emptySet()));
@@ -158,6 +186,9 @@ public final class FocusRestoreSettings {
                 + " allowFocusClick=" + allowFocusClick
                 + " hideNotificationIcons=" + hideNotificationIcons
                 + " showFocusDivider=" + showFocusDivider
+                + " showIslandIcon=" + showIslandIcon
+                + " tintIslandIcon=" + tintIslandIcon
+                + " expandIslandOnClick=" + expandIslandOnClick
                 + " forcePackages=" + islandForcePackages
                 + " islandSeparator=" + displaySeparator(islandGeneralSeparator)
                 + " islandSideSeparator=" + displaySeparator(islandSideSeparator);
@@ -181,6 +212,9 @@ public final class FocusRestoreSettings {
                 .putBoolean(KEY_ALLOW_FOCUS_CLICK, allowFocusClick)
                 .putBoolean(KEY_HIDE_NOTIFICATION_ICONS, hideNotificationIcons)
                 .putBoolean(KEY_SHOW_FOCUS_DIVIDER, showFocusDivider)
+                .putBoolean(KEY_SHOW_ISLAND_ICON, showIslandIcon)
+                .putBoolean(KEY_TINT_ISLAND_ICON, tintIslandIcon)
+                .putBoolean(KEY_EXPAND_ISLAND_ON_CLICK, expandIslandOnClick)
                 .putString(KEY_ISLAND_GENERAL_SEPARATOR, islandGeneralSeparator)
                 .putString(KEY_ISLAND_SIDE_SEPARATOR, islandSideSeparator)
                 .putString(KEY_ISLAND_SEPARATOR, islandGeneralSeparator)

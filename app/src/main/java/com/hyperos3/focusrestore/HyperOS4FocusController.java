@@ -38,6 +38,7 @@ final class HyperOS4FocusController {
     interface ItemFactory {
         DisplayItem create(Object notificationEntry);
         HookSettings settings();
+        void expandIsland(View source, String key);
     }
 
     interface Logger {
@@ -57,13 +58,16 @@ final class HyperOS4FocusController {
         final Icon iconDark;
         final boolean tintIcon;
         final boolean tintIconDark;
+        final boolean islandIcon;
+        final boolean islandIconDark;
         final int priority;
         long updateSequence;
 
         DisplayItem(String key, String packageName, String text, String source,
                     RemoteViews remoteViews, RemoteViews remoteViewsNight,
                     PendingIntent contentIntent, Icon icon, Icon iconDark,
-                    boolean tintIcon, boolean tintIconDark, int priority) {
+                    boolean tintIcon, boolean tintIconDark,
+                    boolean islandIcon, boolean islandIconDark, int priority) {
             this.key = key;
             this.packageName = packageName;
             this.text = text;
@@ -75,6 +79,8 @@ final class HyperOS4FocusController {
             this.iconDark = iconDark;
             this.tintIcon = tintIcon;
             this.tintIconDark = tintIconDark;
+            this.islandIcon = islandIcon;
+            this.islandIconDark = islandIconDark;
             this.priority = priority;
         }
 
@@ -666,6 +672,7 @@ final class HyperOS4FocusController {
         if (host != null) {
             applyTint(host);
             host.updateDividerTint();
+            host.refreshTintedIslandIcon();
         }
         logger.log("OS4 tint updated source=" + source + " tint=0x"
                 + Integer.toHexString(tint));
@@ -796,9 +803,14 @@ final class HyperOS4FocusController {
         private View divider;
         private ImageView iconView;
         private boolean tintCurrentIcon;
+        private boolean currentIslandIcon;
+        private Icon currentIcon;
+        private int currentIconSizeDp;
         private int contentInsetPx;
         private int maxWidthPx = Integer.MAX_VALUE;
         private boolean blockClicks = true;
+        private boolean expandIslandClicks;
+        private String currentItemKey;
 
         FocusHostView(Context context) {
             super(context);
@@ -808,7 +820,10 @@ final class HyperOS4FocusController {
 
         void showContent(View nextContent, DisplayItem item, HookSettings settings) {
             clearContent();
-            blockClicks = !settings.allowFocusClick;
+            blockClicks = !settings.allowFocusClick && !settings.expandIslandOnClick;
+            expandIslandClicks = settings.expandIslandOnClick;
+            currentItemKey = item.key;
+            setClickable(expandIslandClicks);
             float density = getResources().getDisplayMetrics().density;
             maxWidthPx = settings.limitWidth
                     ? Math.max(1, Math.round(settings.widthDp * density)) : Integer.MAX_VALUE;
@@ -827,26 +842,27 @@ final class HyperOS4FocusController {
             Icon selectedIcon = usingDarkIcon ? item.iconDark : item.icon;
             if (selectedIcon != null && nextContent instanceof TextView) {
                 try {
-                    int iconSize = Math.max(1, Math.round(18f * density));
-                    int iconGap = Math.max(1, Math.round(5f * density));
+                    currentIconSizeDp = 15;
+                    int iconSize = Math.max(1, Math.round(currentIconSizeDp * density));
+                    int iconGap = Math.max(1, Math.round(4f * density));
                     iconView = new ImageView(getContext());
                     iconView.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-                    android.graphics.drawable.Drawable iconDrawable =
-                            selectedIcon.loadDrawable(getContext());
-                    if (iconDrawable == null) {
+                    tintCurrentIcon = usingDarkIcon ? item.tintIconDark : item.tintIcon;
+                    currentIslandIcon = usingDarkIcon ? item.islandIconDark : item.islandIcon;
+                    currentIcon = selectedIcon;
+                    FocusIconStyler.Result iconResult = FocusIconStyler.load(getContext(),
+                            selectedIcon, currentIslandIcon, tintCurrentIcon,
+                            currentTint, currentIconSizeDp);
+                    if (iconResult == null) {
                         throw new IllegalStateException("Icon.loadDrawable returned null package="
                                 + item.packageName + " type=" + selectedIcon.getType());
                     }
-                    iconView.setImageDrawable(iconDrawable);
-                    tintCurrentIcon = usingDarkIcon ? item.tintIconDark : item.tintIcon;
-                    if (tintCurrentIcon) iconView.setColorFilter(currentTint);
+                    iconView.setImageDrawable(iconResult.drawable);
                     LayoutParams iconParams = new LayoutParams(
                             iconSize, iconSize, Gravity.CENTER_VERTICAL | Gravity.START);
                     iconParams.setMarginStart(contentInsetPx);
                     addView(iconView, iconParams);
-                    if (settings.allowFocusClick && item.contentIntent != null) {
-                        iconView.setOnClickListener(view -> send(item.contentIntent, item.key));
-                    }
+                    bindClick(iconView, item, settings);
                     contentInsetPx += iconSize + iconGap;
                     logger.log("OS4 focus icon attached key=" + item.key
                             + " tinted=" + tintCurrentIcon);
@@ -863,16 +879,19 @@ final class HyperOS4FocusController {
             params.setMarginStart(contentInsetPx);
             addView(nextContent, params);
             applyTint(nextContent);
-            if (settings.allowFocusClick && item.contentIntent != null
-                    && !(nextContent instanceof ViewGroup)) {
-                nextContent.setOnClickListener(view -> send(item.contentIntent, item.key));
-            }
+            if (!(nextContent instanceof ViewGroup)) bindClick(nextContent, item, settings);
             requestLayout();
             long delay = Math.max(0L, Math.min(5000L, settings.marqueeDelayMs));
             pendingAnimation = () -> startScroll(settings.marqueeBounce);
             postDelayed(pendingAnimation, delay);
             logger.log("OS4 marquee scheduled key=" + item.key + " delayMs=" + delay
                     + " bounce=" + settings.marqueeBounce);
+        }
+
+        private void bindClick(View target, DisplayItem item, HookSettings settings) {
+            if (settings.allowFocusClick && item.contentIntent != null) {
+                target.setOnClickListener(view -> send(item.contentIntent, item.key));
+            }
         }
 
         private boolean isNightMode() {
@@ -895,7 +914,13 @@ final class HyperOS4FocusController {
             divider = null;
             iconView = null;
             tintCurrentIcon = false;
+            currentIslandIcon = false;
+            currentIcon = null;
+            currentIconSizeDp = 0;
             contentInsetPx = 0;
+            expandIslandClicks = false;
+            currentItemKey = null;
+            setClickable(false);
         }
 
         private void startScroll(boolean bounce) {
@@ -935,7 +960,18 @@ final class HyperOS4FocusController {
 
         void updateDividerTint() {
             if (divider != null) divider.setBackgroundColor(currentTint);
-            if (iconView != null && tintCurrentIcon) iconView.setColorFilter(currentTint);
+        }
+
+        void refreshTintedIslandIcon() {
+            if (iconView == null || currentIcon == null
+                    || !currentIslandIcon || !tintCurrentIcon) return;
+            try {
+                FocusIconStyler.Result result = FocusIconStyler.load(getContext(), currentIcon,
+                        true, true, currentTint, currentIconSizeDp);
+                if (result != null) iconView.setImageDrawable(result.drawable);
+            } catch (Throwable throwable) {
+                logger.error("OS4 refresh tinted island icon", throwable);
+            }
         }
 
         @Override
@@ -962,12 +998,27 @@ final class HyperOS4FocusController {
 
         @Override
         public boolean onInterceptTouchEvent(MotionEvent event) {
-            return blockClicks || super.onInterceptTouchEvent(event);
+            return blockClicks || expandIslandClicks || super.onInterceptTouchEvent(event);
         }
 
         @Override
         public boolean onTouchEvent(MotionEvent event) {
-            return blockClicks || super.onTouchEvent(event);
+            if (blockClicks) return true;
+            if (expandIslandClicks) {
+                if (event.getActionMasked() == MotionEvent.ACTION_UP) performClick();
+                return true;
+            }
+            return super.onTouchEvent(event);
+        }
+
+        @Override
+        public boolean performClick() {
+            if (expandIslandClicks) {
+                super.performClick();
+                itemFactory.expandIsland(this, currentItemKey);
+                return true;
+            }
+            return super.performClick();
         }
 
         @Override

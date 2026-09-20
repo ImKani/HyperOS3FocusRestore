@@ -126,11 +126,15 @@ public final class SettingsActivity extends Activity {
     private Switch allowFocusClickSwitch;
     private Switch hideNotificationIconsSwitch;
     private Switch showFocusDividerSwitch;
+    private Switch showIslandIconSwitch;
+    private Switch tintIslandIconSwitch;
+    private Switch expandIslandOnClickSwitch;
     private EditText generalSeparatorInput;
     private EditText sideSeparatorInput;
     private boolean pendingManual, pendingCompatRetry, pendingMarqueeBounce, pendingIslandCompat,
             pendingDisableIslandProperty, pendingDisableIslandFeatureCache, pendingAllowFocusClick,
-            pendingHideNotificationIcons, pendingShowFocusDivider;
+            pendingHideNotificationIcons, pendingShowFocusDivider, pendingShowIslandIcon,
+            pendingTintIslandIcon, pendingExpandIslandOnClick;
     private int pendingHookMode, pendingWidthDp, pendingDelayMs;
     private String pendingGeneralSeparator, pendingSideSeparator;
     private Set<String> pendingForcePackages = new HashSet<>();
@@ -377,12 +381,27 @@ public final class SettingsActivity extends Activity {
         os4Params.leftMargin = dp(8);
         modeSelector.addView(os4ModeButton, os4Params);
         modePanel.addView(modeSelector, matchWrap(dp(8)));
-        modePanel.addView(text("仅安装所选版本的 Hook；切换后重启 SystemUI 或设备生效。", 13, COLOR_TEXT_SECONDARY), matchWrap(0));
+        modePanel.addView(text("切换后重启系统界面或设备生效", 13, COLOR_TEXT_SECONDARY),
+                matchWrap(0));
         root.addView(modePanel, matchWrap(dp(12)));
 
-        root.addView(sectionHeader("焦点通知"), matchWrap(dp(8)));
+        root.addView(sectionHeader("超级岛转换"), matchWrap(dp(8)));
+        LinearLayout islandPanel = panel();
+        islandCompatSwitch = createSwitch("转换超级岛内容为焦点通知");
+        islandPanel.addView(islandCompatSwitch, matchWrap(dp(4)));
+        forcePackagesButton = new Button(this);
+        forcePackagesButton.setText(forcePackagesLabel());
+        forcePackagesButton.setAllCaps(false);
+        forcePackagesButton.setTextSize(14);
+        flattenButton(forcePackagesButton);
+        forcePackagesButton.setMinHeight(dp(52));
+        forcePackagesButton.setOnClickListener(v -> showForcePackagesDialog());
+        islandPanel.addView(forcePackagesButton, matchWrap(0));
+        root.addView(islandPanel, matchWrap(dp(12)));
+
+        root.addView(sectionHeader("焦点显示"), matchWrap(dp(8)));
         LinearLayout focusPanel = panel();
-        manualWidthSwitch = createSwitch("限制通知宽度");
+        manualWidthSwitch = createSwitch("限制焦点通知宽度");
         focusPanel.addView(manualWidthSwitch, matchWrap(dp(4)));
         LinearLayout widthRow = valueRow("最大宽度", pendingWidthDp + " dp");
         widthValueRow = widthRow;
@@ -395,62 +414,47 @@ public final class SettingsActivity extends Activity {
         widthRangeRow = rangeRow("80 dp", "400 dp");
         focusPanel.addView(widthRangeRow, matchWrap(dp(4)));
         hideNotificationIconsSwitch = createSwitch("隐藏其他通知图标（HyperOS 4）");
-        showFocusDividerSwitch = createSwitch("显示分隔竖线（HyperOS 4）");
+        showFocusDividerSwitch = createSwitch("显示焦点分隔线（HyperOS 4）");
         focusPanel.addView(hideNotificationIconsSwitch, matchWrap(dp(4)));
         focusPanel.addView(showFocusDividerSwitch, matchWrap(0));
         root.addView(focusPanel, matchWrap(dp(12)));
-
-        root.addView(sectionHeader("超级岛"), matchWrap(dp(8)));
-        LinearLayout islandPanel = panel();
-        islandCompatSwitch = createSwitch("转换超级岛内容为焦点通知");
-        islandPanel.addView(islandCompatSwitch, matchWrap(dp(4)));
-        forcePackagesButton = new Button(this);
-        forcePackagesButton.setText(forcePackagesLabel());
-        forcePackagesButton.setAllCaps(false);
-        forcePackagesButton.setTextSize(14);
-        flattenButton(forcePackagesButton);
-        forcePackagesButton.setMinHeight(dp(56));
-        forcePackagesButton.setOnClickListener(v -> showForcePackagesDialog());
-        islandPanel.addView(forcePackagesButton, matchWrap(0));
-        root.addView(islandPanel, matchWrap(dp(12)));
-
-        root.addView(sectionHeader("兼容性"), matchWrap(dp(8)));
-        LinearLayout compatPanel = panel();
-        marqueeBounceSwitch = createSwitch("启用往返滚动");
-        compatRetrySwitch = createSwitch("兼容重试模式");
-        compatPanel.addView(marqueeBounceSwitch, matchWrap(dp(4)));
-        compatPanel.addView(compatRetrySwitch, matchWrap(0));
-        root.addView(compatPanel, matchWrap(dp(12)));
 
         manualWidthSwitch.setChecked(pendingManual);
         widthSeekBar.setProgress(pendingWidthDp - MIN_WIDTH_DP);
         widthValue.setText(pendingWidthDp + " dp");
         islandCompatSwitch.setChecked(pendingIslandCompat);
-        marqueeBounceSwitch.setChecked(pendingMarqueeBounce);
-        compatRetrySwitch.setChecked(pendingCompatRetry);
         hideNotificationIconsSwitch.setChecked(pendingHideNotificationIcons);
         showFocusDividerSwitch.setChecked(pendingShowFocusDivider);
         updateModeButtons();
         updateWidthControls();
         updateForcePackagesButton();
+        updateExperimentalControls();
         installSettingsListeners();
     }
 
     private void buildAdvancedPage(LinearLayout root) {
-        root.addView(sectionHeader("连接符"), matchWrap(dp(8)));
-        LinearLayout separatorPanel = panel();
-        separatorPanel.addView(text("超级岛内容连接符", 15, COLOR_TEXT_PRIMARY), matchWrap(dp(4)));
-        generalSeparatorInput = input("默认：·，允许留空");
-        generalSeparatorInput.setText(pendingGeneralSeparator);
-        separatorPanel.addView(generalSeparatorInput, matchWrap(dp(8)));
-        separatorPanel.addView(text("左右超级岛内容连接符", 15, COLOR_TEXT_PRIMARY), matchWrap(dp(4)));
-        sideSeparatorInput = input("默认：·，允许留空");
-        sideSeparatorInput.setText(pendingSideSeparator);
-        separatorPanel.addView(sideSeparatorInput, matchWrap(0));
-        root.addView(separatorPanel, matchWrap(dp(12)));
+        root.addView(sectionHeader("实验性图标"), matchWrap(dp(8)));
+        LinearLayout iconPanel = panel();
+        showIslandIconSwitch = createSwitch("显示超级岛图标（实验性）");
+        tintIslandIconSwitch = createSwitch("图标跟随状态栏反色（实验性）");
+        iconPanel.addView(showIslandIconSwitch, matchWrap(dp(4)));
+        iconPanel.addView(tintIslandIconSwitch, matchWrap(0));
+        root.addView(iconPanel, matchWrap(dp(12)));
 
-        root.addView(sectionHeader("滚动行为"), matchWrap(dp(8)));
+        root.addView(sectionHeader("点击行为"), matchWrap(dp(8)));
+        LinearLayout interactionPanel = panel();
+        allowFocusClickSwitch = createSwitch("旧版：打开通知内容（实验性）");
+        expandIslandOnClickSwitch = createSwitch("点击后展开超级岛通知（实验性）");
+        interactionPanel.addView(allowFocusClickSwitch, matchWrap(dp(4)));
+        interactionPanel.addView(expandIslandOnClickSwitch, matchWrap(0));
+        root.addView(interactionPanel, matchWrap(dp(12)));
+
+        root.addView(sectionHeader("滚动与兼容"), matchWrap(dp(8)));
         LinearLayout delayPanel = panel();
+        marqueeBounceSwitch = createSwitch("启用往返滚动");
+        compatRetrySwitch = createSwitch("兼容重试模式");
+        delayPanel.addView(marqueeBounceSwitch, matchWrap(dp(4)));
+        delayPanel.addView(compatRetrySwitch, matchWrap(dp(4)));
         LinearLayout delayRow = valueRow("滚动启动延迟", "0.2 秒");
         delayValue = (TextView) delayRow.getChildAt(1);
         delayPanel.addView(delayRow, matchWrap(0));
@@ -460,23 +464,40 @@ public final class SettingsActivity extends Activity {
         delayPanel.addView(delaySeekBar, matchWrap(dp(2)));
         delayPanel.addView(rangeRow("0 秒", "5 秒"), matchWrap(0));
         root.addView(delayPanel, matchWrap(dp(12)));
+
+        root.addView(sectionHeader("内容连接符"), matchWrap(dp(8)));
+        LinearLayout separatorPanel = panel();
+        separatorPanel.addView(text("普通内容", 15, COLOR_TEXT_PRIMARY), matchWrap(dp(4)));
+        generalSeparatorInput = input("默认：·，允许留空");
+        generalSeparatorInput.setText(pendingGeneralSeparator);
+        separatorPanel.addView(generalSeparatorInput, matchWrap(dp(8)));
+        separatorPanel.addView(text("左右区域", 15, COLOR_TEXT_PRIMARY), matchWrap(dp(4)));
+        sideSeparatorInput = input("默认：·，允许留空");
+        sideSeparatorInput.setText(pendingSideSeparator);
+        separatorPanel.addView(sideSeparatorInput, matchWrap(0));
+        root.addView(separatorPanel, matchWrap(dp(12)));
+
+        showIslandIconSwitch.setChecked(pendingShowIslandIcon);
+        tintIslandIconSwitch.setChecked(pendingTintIslandIcon);
+        allowFocusClickSwitch.setChecked(pendingAllowFocusClick);
+        expandIslandOnClickSwitch.setChecked(pendingExpandIslandOnClick);
+        marqueeBounceSwitch.setChecked(pendingMarqueeBounce);
+        compatRetrySwitch.setChecked(pendingCompatRetry);
         delaySeekBar.setProgress(pendingDelayMs / 100);
         delayValue.setText(String.format(Locale.US, "%.1f 秒", pendingDelayMs / 1000f));
 
         if (BuildConfig.DEBUG) {
-            root.addView(sectionHeader("调试"), matchWrap(dp(8)));
+            root.addView(sectionHeader("内部兼容开关"), matchWrap(dp(8)));
             LinearLayout debugPanel = panel();
-            allowFocusClickSwitch = createSwitch("允许焦点通知点击");
             disableIslandPropertySwitch = createSwitch("覆盖 feature.island.debug");
             disableIslandFeatureCacheSwitch = createSwitch("禁用 FEATURE_DYNAMIC_ISLAND");
-            debugPanel.addView(allowFocusClickSwitch, matchWrap(dp(4)));
             debugPanel.addView(disableIslandPropertySwitch, matchWrap(dp(4)));
             debugPanel.addView(disableIslandFeatureCacheSwitch, matchWrap(0));
             root.addView(debugPanel, matchWrap(dp(12)));
-            allowFocusClickSwitch.setChecked(pendingAllowFocusClick);
             disableIslandPropertySwitch.setChecked(pendingDisableIslandProperty);
             disableIslandFeatureCacheSwitch.setChecked(pendingDisableIslandFeatureCache);
         }
+        updateExperimentalControls();
         buildAboutSections(root);
         installSettingsListeners();
     }
@@ -536,6 +557,9 @@ public final class SettingsActivity extends Activity {
         outState.putBoolean("m3.click", pendingAllowFocusClick);
         outState.putBoolean("m3.hide", pendingHideNotificationIcons);
         outState.putBoolean("m3.divider", pendingShowFocusDivider);
+        outState.putBoolean("m3.showIslandIcon", pendingShowIslandIcon);
+        outState.putBoolean("m3.tintIslandIcon", pendingTintIslandIcon);
+        outState.putBoolean("m3.expandIsland", pendingExpandIslandOnClick);
         outState.putString("m3.general", pendingGeneralSeparator);
         outState.putString("m3.side", pendingSideSeparator);
         outState.putStringArrayList("m3.packages", new ArrayList<>(pendingForcePackages));
@@ -559,10 +583,17 @@ public final class SettingsActivity extends Activity {
         pendingAllowFocusClick = state.getBoolean("m3.click", pendingAllowFocusClick);
         pendingHideNotificationIcons = state.getBoolean("m3.hide", pendingHideNotificationIcons);
         pendingShowFocusDivider = state.getBoolean("m3.divider", pendingShowFocusDivider);
+        pendingShowIslandIcon = state.getBoolean("m3.showIslandIcon", pendingShowIslandIcon);
+        pendingTintIslandIcon = state.getBoolean("m3.tintIslandIcon", pendingTintIslandIcon);
+        pendingExpandIslandOnClick = state.getBoolean("m3.expandIsland",
+                pendingExpandIslandOnClick) && !pendingAllowFocusClick;
         pendingGeneralSeparator = state.getString("m3.general", pendingGeneralSeparator);
         pendingSideSeparator = state.getString("m3.side", pendingSideSeparator);
         ArrayList<String> packages = state.getStringArrayList("m3.packages");
-        if (packages != null) pendingForcePackages = new HashSet<>(packages);
+        if (packages != null) {
+            pendingForcePackages = new HashSet<>(InputLimits.sanitizePackages(
+                    new java.util.LinkedHashSet<>(packages)));
+        }
     }
 
     private void installSettingsListeners() {
@@ -590,11 +621,40 @@ public final class SettingsActivity extends Activity {
         if (compatRetrySwitch != null) compatRetrySwitch.setOnCheckedChangeListener((b, c) -> { pendingCompatRetry = c; markPending(); });
         if (marqueeBounceSwitch != null) marqueeBounceSwitch.setOnCheckedChangeListener((b, c) -> { pendingMarqueeBounce = c; markPending(); });
         if (islandCompatSwitch != null) islandCompatSwitch.setOnCheckedChangeListener((b, c) -> {
-            pendingIslandCompat = c; updateForcePackagesButton(); markPending();
+            pendingIslandCompat = c;
+            updateForcePackagesButton();
+            updateExperimentalControls();
+            markPending();
         });
         if (disableIslandPropertySwitch != null) disableIslandPropertySwitch.setOnCheckedChangeListener((b, c) -> { pendingDisableIslandProperty = c; markPending(); });
         if (disableIslandFeatureCacheSwitch != null) disableIslandFeatureCacheSwitch.setOnCheckedChangeListener((b, c) -> { pendingDisableIslandFeatureCache = c; markPending(); });
-        if (allowFocusClickSwitch != null) allowFocusClickSwitch.setOnCheckedChangeListener((b, c) -> { pendingAllowFocusClick = c; markPending(); });
+        if (showIslandIconSwitch != null) showIslandIconSwitch.setOnCheckedChangeListener((b, c) -> {
+            pendingShowIslandIcon = c;
+            updateExperimentalControls();
+            markPending();
+        });
+        if (tintIslandIconSwitch != null) tintIslandIconSwitch.setOnCheckedChangeListener((b, c) -> {
+            pendingTintIslandIcon = c;
+            markPending();
+        });
+        if (allowFocusClickSwitch != null) allowFocusClickSwitch.setOnCheckedChangeListener((b, c) -> {
+            pendingAllowFocusClick = c;
+            if (c) {
+                pendingExpandIslandOnClick = false;
+                if (expandIslandOnClickSwitch != null) expandIslandOnClickSwitch.setChecked(false);
+            }
+            markPending();
+        });
+        if (expandIslandOnClickSwitch != null) {
+            expandIslandOnClickSwitch.setOnCheckedChangeListener((b, c) -> {
+                pendingExpandIslandOnClick = c;
+                if (c) {
+                    pendingAllowFocusClick = false;
+                    if (allowFocusClickSwitch != null) allowFocusClickSwitch.setChecked(false);
+                }
+                markPending();
+            });
+        }
         if (hideNotificationIconsSwitch != null) hideNotificationIconsSwitch.setOnCheckedChangeListener((b, c) -> { pendingHideNotificationIcons = c; markPending(); });
         if (showFocusDividerSwitch != null) showFocusDividerSwitch.setOnCheckedChangeListener((b, c) -> { pendingShowFocusDivider = c; markPending(); });
     }
@@ -613,6 +673,14 @@ public final class SettingsActivity extends Activity {
         forcePackagesButton.setText(forcePackagesLabel());
         forcePackagesButton.setTextColor(enabled ? COLOR_PRIMARY : COLOR_TEXT_SECONDARY);
         forcePackagesButton.setBackground(roundedBg(enabled ? COLOR_PRIMARY_LIGHT : COLOR_SURFACE_HIGH, 12));
+    }
+
+    private void updateExperimentalControls() {
+        boolean islandIconEnabled = pendingIslandCompat;
+        setModeSpecificSwitchEnabled(showIslandIconSwitch, islandIconEnabled);
+        setModeSpecificSwitchEnabled(tintIslandIconSwitch,
+                islandIconEnabled && pendingShowIslandIcon);
+        setModeSpecificSwitchEnabled(expandIslandOnClickSwitch, true);
     }
 
     private void updateWidthControls() {
@@ -714,7 +782,13 @@ public final class SettingsActivity extends Activity {
         dialogListView.setVisibility(View.GONE);
         dialogListView.setOnItemClickListener((parent, view, position, id) -> {
             ApplicationInfo app = dialogVisibleApps.get(position);
-            if (!dialogSelectedPackages.add(app.packageName)) dialogSelectedPackages.remove(app.packageName);
+            if (dialogSelectedPackages.contains(app.packageName)) {
+                dialogSelectedPackages.remove(app.packageName);
+            } else if (dialogSelectedPackages.size() >= InputLimits.MAX_FORCE_PACKAGES) {
+                showFeedback("白名单最多选择 " + InputLimits.MAX_FORCE_PACKAGES + " 个应用");
+            } else {
+                dialogSelectedPackages.add(app.packageName);
+            }
             filterDialogApps();
         });
         root.addView(dialogListView, new LinearLayout.LayoutParams(-1, 0, 1f));
@@ -732,7 +806,13 @@ public final class SettingsActivity extends Activity {
         cancel.setPadding(dp(16), 0, dp(16), 0);
         buttons.addView(cancel, new LinearLayout.LayoutParams(-2, dp(40)));
         Button done = actionButton("完成", COLOR_PRIMARY, Color.WHITE);
-        done.setOnClickListener(v -> { pendingForcePackages = new HashSet<>(dialogSelectedPackages); updateForcePackagesButton(); markPending(); dialog.dismiss(); });
+        done.setOnClickListener(v -> {
+            pendingForcePackages = new HashSet<>(InputLimits.sanitizePackages(
+                    dialogSelectedPackages));
+            updateForcePackagesButton();
+            markPending();
+            dialog.dismiss();
+        });
         LinearLayout.LayoutParams doneParams = new LinearLayout.LayoutParams(-2, dp(40));
         doneParams.leftMargin = dp(8);
         buttons.addView(done, doneParams);
@@ -924,6 +1004,9 @@ public final class SettingsActivity extends Activity {
         pendingAllowFocusClick = settings.allowFocusClick;
         pendingHideNotificationIcons = settings.hideNotificationIcons;
         pendingShowFocusDivider = settings.showFocusDivider;
+        pendingShowIslandIcon = settings.showIslandIcon;
+        pendingTintIslandIcon = settings.tintIslandIcon;
+        pendingExpandIslandOnClick = settings.expandIslandOnClick;
         pendingGeneralSeparator = settings.islandGeneralSeparator;
         pendingSideSeparator = settings.islandSideSeparator;
         pendingForcePackages = new HashSet<>(settings.islandForcePackages);
@@ -942,7 +1025,12 @@ public final class SettingsActivity extends Activity {
                 pendingCompatRetry, pendingMarqueeBounce, pendingIslandCompat, pendingDisableIslandProperty,
                 pendingDisableIslandFeatureCache, pendingAllowFocusClick,
                 pendingHideNotificationIcons, pendingShowFocusDivider,
+                pendingShowIslandIcon, pendingTintIslandIcon,
+                pendingExpandIslandOnClick,
                 pendingGeneralSeparator, pendingSideSeparator, pendingForcePackages);
+        pendingForcePackages = new HashSet<>(settings.islandForcePackages);
+        pendingExpandIslandOnClick = settings.expandIslandOnClick;
+        updateForcePackagesButton();
         long generation;
         synchronized (STORE_WRITE_LOCK) {
             generation = settingsGeneration = nextSettingsGenerationLocked();
@@ -1088,6 +1176,7 @@ public final class SettingsActivity extends Activity {
         boolean os4 = pendingHookMode == FocusRestoreSettings.HOOK_MODE_OS4;
         setModeSpecificSwitchEnabled(hideNotificationIconsSwitch, os4);
         setModeSpecificSwitchEnabled(showFocusDividerSwitch, os4);
+        updateExperimentalControls();
     }
 
     private void setModeSpecificSwitchEnabled(Switch control, boolean enabled) {

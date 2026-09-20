@@ -12,6 +12,7 @@ import android.os.Parcelable;
 import android.os.SystemClock;
 import android.database.Cursor;
 import android.graphics.Rect;
+import android.graphics.Color;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.Icon;
 import org.json.JSONObject;
@@ -20,12 +21,14 @@ import android.text.TextUtils;
 import android.util.Log;
 import android.widget.RemoteViews;
 import android.widget.TextView;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewParent;
 import android.view.animation.LinearInterpolator;
 
 import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -84,6 +87,8 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
     private boolean modeHooksInstalled;
     private int installedHookMode;
     private HyperOS4FocusController os4Controller;
+    private volatile Object dynamicIslandTouchHandler;
+    private volatile Object miuiShadeTouchHandler;
     private Handler mainHandler;
     private TextView pendingMarqueeText;
     private Runnable pendingMarqueeRunnable;
@@ -167,6 +172,7 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
         }
         installedHookMode = currentSettings.hookMode;
         modeHooksInstalled = true;
+        hookDynamicIslandTouchHandler();
         log("installing configuredMode=OS" + installedHookMode
                 + " settings=" + currentSettings.describe());
         try {
@@ -208,6 +214,11 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
                     @Override
                     public HookSettings settings() {
                         return currentSettings;
+                    }
+
+                    @Override
+                    public void expandIsland(View source, String key) {
+                        dispatchIslandTap(source, key, "OS4");
                     }
                 }, new HyperOS4FocusController.Logger() {
                     @Override
@@ -251,6 +262,31 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
                     });
         } catch (Throwable t) {
             error("hookApplicationAttach", t);
+        }
+    }
+
+    private void hookDynamicIslandTouchHandler() {
+        try {
+            Class<?> touchHandlerClass = FocusReflection.findClass(classLoader,
+                    "com.miui.systemui.notification.island.DynamicIslandTouchHandlerImpl");
+            XposedBridge.hookAllConstructors(touchHandlerClass, new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    dynamicIslandTouchHandler = param.thisObject;
+                    log("dynamic island touch handler captured");
+                }
+            });
+            Class<?> shadeHandlerClass = FocusReflection.findClass(classLoader,
+                    "com.miui.systemui.shade.MiuiShadeTouchHandlerImpl");
+            XposedBridge.hookAllConstructors(shadeHandlerClass, new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    miuiShadeTouchHandler = param.thisObject;
+                    log("MIUI shade touch handler captured");
+                }
+            });
+        } catch (Throwable throwable) {
+            error("hookDynamicIslandTouchHandler", throwable);
         }
     }
 
@@ -942,14 +978,113 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
                             boolean focus = data != null && (data.isFocus || data.hasExplicitFocusData);
                             if (focus || converted) {
                                 param.setResult(null);
-                                log("ignored focus click key=" + (data == null ? null : data.key)
-                                        + " converted=" + converted);
+                                if (currentSettings.expandIslandOnClick
+                                        && param.thisObject instanceof View) {
+                                    dispatchIslandTap((View) param.thisObject,
+                                            data == null ? null : data.key, "OS3");
+                                } else {
+                                    log("ignored focus click key=" + (data == null ? null : data.key)
+                                            + " converted=" + converted);
+                                }
                             }
                         }
                     });
             log("disabled converted focus click");
         } catch (Throwable t) {
             error("hookDisableConvertedFocusClick", t);
+        }
+    }
+
+    private void dispatchIslandTap(View source, String key, String mode) {
+        MotionEvent down = null;
+        MotionEvent up = null;
+        try {
+            int[] location = new int[2];
+            source.getLocationOnScreen(location);
+            float x = location[0] + source.getWidth() / 2f;
+            float y = location[1] + source.getHeight() / 2f;
+            long time = SystemClock.uptimeMillis();
+            down = MotionEvent.obtain(time, time, MotionEvent.ACTION_DOWN, x, y, 0);
+            up = MotionEvent.obtain(time, time + 32L, MotionEvent.ACTION_UP, x, y, 0);
+            if (dispatchViaShadeTouchHandler(down, up, key, mode)) return;
+
+            Class<?> dependencyClass = FocusReflection.findClass(classLoader,
+                    "com.android.systemui.Dependency");
+            Class<?> touchHandlerClass = FocusReflection.findClass(classLoader,
+                    "com.miui.systemui.notification.island.DynamicIslandTouchHandlerImpl");
+            Object touchHandler = dynamicIslandTouchHandler;
+            try {
+                if (touchHandler == null) touchHandler = XposedHelpers.callStaticMethod(
+                        dependencyClass, "get", touchHandlerClass);
+                if (touchHandler == null) {
+                    throw new IllegalStateException("Dependency returned null island touch handler");
+                }
+            } catch (Throwable directFailure) {
+                Class<?> pluginControllerClass = FocusReflection.findClass(classLoader,
+                        "com.android.systemui.statusbar.notification.DynamicIslandPluginController");
+                Object pluginController = XposedHelpers.callStaticMethod(
+                        dependencyClass, "get", pluginControllerClass);
+                touchHandler = XposedHelpers.newInstance(touchHandlerClass, pluginController);
+            }
+            Object downIntercept = XposedHelpers.callMethod(touchHandler,
+                    "onIntercept", down, "status_bar");
+            Object downResult = null;
+            Object upResult = null;
+            if (Boolean.TRUE.equals(downIntercept)) {
+                downResult = XposedHelpers.callMethod(touchHandler,
+                        "onTouch", down, "status_bar");
+                upResult = XposedHelpers.callMethod(touchHandler,
+                        "onTouch", up, "status_bar");
+            }
+            log(mode + " experimental island tap fallback key=" + key
+                    + " downIntercept=" + downIntercept + " down=" + downResult
+                    + " up=" + upResult);
+        } catch (Throwable throwable) {
+            error(mode + " experimental island tap key=" + key, throwable);
+        } finally {
+            if (down != null) down.recycle();
+            if (up != null) up.recycle();
+        }
+    }
+
+    private boolean dispatchViaShadeTouchHandler(MotionEvent down, MotionEvent up,
+                                                  String key, String mode) {
+        try {
+            Object shadeHandler = miuiShadeTouchHandler;
+            if (shadeHandler == null) {
+                Class<?> dependencyClass = FocusReflection.findClass(classLoader,
+                        "com.android.systemui.Dependency");
+                Class<?> shadeHandlerClass = FocusReflection.findClass(classLoader,
+                        "com.miui.systemui.shade.MiuiShadeTouchHandlerImpl");
+                shadeHandler = XposedHelpers.callStaticMethod(
+                        dependencyClass, "get", shadeHandlerClass);
+            }
+            if (shadeHandler == null) return false;
+            Class<?> functionClass = FocusReflection.findClass(classLoader,
+                    "kotlin.jvm.functions.Function1");
+            Class<?> unitClass = FocusReflection.findClass(classLoader, "kotlin.Unit");
+            Object unit = XposedHelpers.getStaticObjectField(unitClass, "INSTANCE");
+            Object noOpCallback = Proxy.newProxyInstance(classLoader,
+                    new Class<?>[]{functionClass}, (proxy, method, args) -> {
+                        if ("invoke".equals(method.getName())) return unit;
+                        if ("hashCode".equals(method.getName())) {
+                            return System.identityHashCode(proxy);
+                        }
+                        if ("equals".equals(method.getName())) {
+                            return args != null && args.length == 1 && proxy == args[0];
+                        }
+                        return "FocusRestoreIslandTouchCallback";
+                    });
+            Object downResult = XposedHelpers.callMethod(shadeHandler,
+                    "handleExternalTouch", down, "status_bar", noOpCallback);
+            Object upResult = XposedHelpers.callMethod(shadeHandler,
+                    "handleExternalTouch", up, "status_bar", noOpCallback);
+            log(mode + " experimental island tap key=" + key
+                    + " path=shade down=" + downResult + " up=" + upResult);
+            return true;
+        } catch (Throwable throwable) {
+            error(mode + " experimental shade tap fallback key=" + key, throwable);
+            return false;
         }
     }
 
@@ -1222,12 +1357,14 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
         SelectedFocusIcon dark = selectFocusIcon(data.notification, data.islandParam,
                 true, false);
         if (dark == null) dark = light;
-        final Drawable drawable;
-        final Drawable drawableDark;
+        final FocusIconStyler.Result styledLight;
+        final FocusIconStyler.Result styledDark;
         try {
-            drawable = light.icon.loadDrawable(systemUiContext);
-            drawableDark = dark.icon.loadDrawable(systemUiContext);
-            if (drawable == null || drawableDark == null) {
+            styledLight = FocusIconStyler.load(systemUiContext, light.icon,
+                    light.islandIcon, light.tint, Color.WHITE, 18);
+            styledDark = FocusIconStyler.load(systemUiContext, dark.icon,
+                    dark.islandIcon, dark.tint, Color.BLACK, 18);
+            if (styledLight == null || styledDark == null) {
                 log(stage + " island focus icon load returned null package=" + data.packageName
                         + " lightType=" + light.icon.getType()
                         + " darkType=" + dark.icon.getType());
@@ -1238,19 +1375,23 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
             error(stage + " loadIslandIcon", throwable);
             return;
         }
+        Icon lightIcon = styledLight.icon;
+        Icon darkIcon = styledDark.icon;
+        Drawable drawable = styledLight.drawable;
+        Drawable drawableDark = styledDark.drawable;
 
         refreshOriginalBeanIconState(bean, state);
         boolean success = true;
         if (hasField(bean, "icon")) {
-            state.patchedIcon = setObjectField(bean, "icon", light.icon,
+            state.patchedIcon = setObjectField(bean, "icon", lightIcon,
                     stage + " setIcon");
-            if (state.patchedIcon) state.lastConvertedIcon = light.icon;
+            if (state.patchedIcon) state.lastConvertedIcon = lightIcon;
             else success = false;
         }
         if (hasField(bean, "iconDark")) {
-            state.patchedIconDark = setObjectField(bean, "iconDark", dark.icon,
+            state.patchedIconDark = setObjectField(bean, "iconDark", darkIcon,
                     stage + " setIconDark");
-            if (state.patchedIconDark) state.lastConvertedIconDark = dark.icon;
+            if (state.patchedIconDark) state.lastConvertedIconDark = darkIcon;
             else success = false;
         }
         if (hasField(bean, "drawable")) {
@@ -1391,23 +1532,30 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
         Bundle pictures = extras == null ? null : extras.getBundle("miui.focus.pics");
         String directReference = extras == null ? null : extras.getString(
                 dark ? "miui.focus.pic_ticker_dark" : "miui.focus.pic_ticker");
-        Icon icon = iconFromBundle(pictures, directReference);
-        if (icon != null) return new SelectedFocusIcon(icon, false, "ticker:" + directReference);
+        Icon icon = null;
+        if (currentSettings.showIslandIcon) {
+            icon = iconFromBundle(pictures, directReference);
+            if (icon != null) return new SelectedFocusIcon(icon,
+                    currentSettings.tintIslandIcon, true, "ticker:" + directReference);
 
-        String payloadReference = IslandPayloadParser.findPictureReference(islandParam, dark);
-        icon = iconFromBundle(pictures, payloadReference);
-        if (icon != null) return new SelectedFocusIcon(icon, false, "island:" + payloadReference);
+            String payloadReference = IslandPayloadParser.findPictureReference(islandParam, dark);
+            icon = iconFromBundle(pictures, payloadReference);
+            if (icon != null) return new SelectedFocusIcon(icon,
+                    currentSettings.tintIslandIcon, true, "island:" + payloadReference);
+        }
 
-        if (dark) {
+        if (dark && currentSettings.showIslandIcon) {
             String lightReference = extras == null ? null
                     : extras.getString("miui.focus.pic_ticker");
             icon = iconFromBundle(pictures, lightReference);
-            if (icon != null) return new SelectedFocusIcon(icon, false,
+            if (icon != null) return new SelectedFocusIcon(icon,
+                    currentSettings.tintIslandIcon, true,
                     "tickerLight:" + lightReference);
         }
         if (!allowSmallFallback) return null;
         icon = notification.getSmallIcon();
-        return icon == null ? null : new SelectedFocusIcon(icon, true, "notificationSmallIcon");
+        return icon == null ? null : new SelectedFocusIcon(icon, false, false,
+                "notificationSmallIcon");
     }
 
     private static Icon iconFromBundle(Bundle pictures, String reference) {
@@ -1742,6 +1890,8 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
                     focusIconDark == null ? null : focusIconDark.icon,
                     focusIcon != null && focusIcon.tint,
                     focusIconDark != null && focusIconDark.tint,
+                    focusIcon != null && focusIcon.islandIcon,
+                    focusIconDark != null && focusIconDark.islandIcon,
                     OS4FocusPriorityPolicy.PRIORITY_NATIVE_FOCUS);
         }
 
@@ -1777,7 +1927,9 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
                 focusIcon == null ? null : focusIcon.icon,
                 focusIconDark == null ? null : focusIconDark.icon,
                 focusIcon != null && focusIcon.tint,
-                focusIconDark != null && focusIconDark.tint, priority);
+                focusIconDark != null && focusIconDark.tint,
+                focusIcon != null && focusIcon.islandIcon,
+                focusIconDark != null && focusIconDark.islandIcon, priority);
     }
 
     private FocusData inspectBean(Object bean) {
@@ -1994,11 +2146,13 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
     private static final class SelectedFocusIcon {
         final Icon icon;
         final boolean tint;
+        final boolean islandIcon;
         final String source;
 
-        SelectedFocusIcon(Icon icon, boolean tint, String source) {
+        SelectedFocusIcon(Icon icon, boolean tint, boolean islandIcon, String source) {
             this.icon = icon;
             this.tint = tint;
+            this.islandIcon = islandIcon;
             this.source = source;
         }
     }

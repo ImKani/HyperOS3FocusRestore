@@ -20,6 +20,9 @@ final class HookSettings {
     final boolean allowFocusClick;
     final boolean hideNotificationIcons;
     final boolean showFocusDivider;
+    final boolean showIslandIcon;
+    final boolean tintIslandIcon;
+    final boolean expandIslandOnClick;
     final String generalSeparator;
     final String sideSeparator;
     final Set<String> islandForcePackages;
@@ -28,7 +31,9 @@ final class HookSettings {
                          boolean compatRetry, boolean marqueeBounce, boolean islandCompat,
                          boolean disableIslandProperty, boolean disableIslandFeatureCache,
                          boolean allowFocusClick, boolean hideNotificationIcons,
-                         boolean showFocusDivider, String generalSeparator,
+                         boolean showFocusDivider, boolean showIslandIcon,
+                         boolean tintIslandIcon, boolean expandIslandOnClick,
+                         String generalSeparator,
                          String sideSeparator, Set<String> forcePackages) {
         this.hookMode = FocusRestoreSettings.normalizeHookMode(hookMode);
         this.limitWidth = limitWidth;
@@ -43,6 +48,9 @@ final class HookSettings {
         this.allowFocusClick = allowFocusClick;
         this.hideNotificationIcons = hideNotificationIcons;
         this.showFocusDivider = showFocusDivider;
+        this.showIslandIcon = showIslandIcon;
+        this.tintIslandIcon = tintIslandIcon;
+        this.expandIslandOnClick = allowFocusClick ? false : expandIslandOnClick;
         this.generalSeparator = InputLimits.limitSeparator(generalSeparator == null
                 ? FocusRestoreSettings.DEFAULT_ISLAND_SEPARATOR : generalSeparator);
         this.sideSeparator = InputLimits.limitSeparator(sideSeparator == null
@@ -61,6 +69,9 @@ final class HookSettings {
                 FocusRestoreSettings.DEFAULT_ALLOW_FOCUS_CLICK,
                 FocusRestoreSettings.DEFAULT_HIDE_NOTIFICATION_ICONS,
                 FocusRestoreSettings.DEFAULT_SHOW_FOCUS_DIVIDER,
+                FocusRestoreSettings.DEFAULT_SHOW_ISLAND_ICON,
+                FocusRestoreSettings.DEFAULT_TINT_ISLAND_ICON,
+                FocusRestoreSettings.DEFAULT_EXPAND_ISLAND_ON_CLICK,
                 FocusRestoreSettings.DEFAULT_ISLAND_SEPARATOR, FocusRestoreSettings.DEFAULT_ISLAND_SEPARATOR,
                 Collections.<String>emptySet());
     }
@@ -121,11 +132,24 @@ final class HookSettings {
                 SettingsContract.SHOW_FOCUS_DIVIDER)
                 ? cursor.getInt(SettingsContract.SHOW_FOCUS_DIVIDER) != 0
                 : FocusRestoreSettings.DEFAULT_SHOW_FOCUS_DIVIDER;
+        boolean showIslandIcon = hasValue(cursor, columnCount,
+                SettingsContract.SHOW_ISLAND_ICON)
+                ? cursor.getInt(SettingsContract.SHOW_ISLAND_ICON) != 0
+                : FocusRestoreSettings.DEFAULT_SHOW_ISLAND_ICON;
+        boolean tintIslandIcon = hasValue(cursor, columnCount,
+                SettingsContract.TINT_ISLAND_ICON)
+                ? cursor.getInt(SettingsContract.TINT_ISLAND_ICON) != 0
+                : FocusRestoreSettings.DEFAULT_TINT_ISLAND_ICON;
+        boolean expandIslandOnClick = hasValue(cursor, columnCount,
+                SettingsContract.EXPAND_ISLAND_ON_CLICK)
+                ? cursor.getInt(SettingsContract.EXPAND_ISLAND_ON_CLICK) != 0
+                : FocusRestoreSettings.DEFAULT_EXPAND_ISLAND_ON_CLICK;
 
         return new HookSettings(hookMode, limitWidth, widthDp, marqueeDelayMs,
                 compatRetry, marqueeBounce,
                 islandCompat, disableIslandProperty, disableIslandFeatureCache,
                 allowFocusClick, hideNotificationIcons, showFocusDivider,
+                showIslandIcon, tintIslandIcon, expandIslandOnClick,
                 generalSeparator, sideSeparator, forcePackages);
     }
 
@@ -139,6 +163,9 @@ final class HookSettings {
                  + " allowFocusClick=" + allowFocusClick
                 + " hideNotificationIcons=" + hideNotificationIcons
                 + " showFocusDivider=" + showFocusDivider
+                + " showIslandIcon=" + showIslandIcon
+                + " tintIslandIcon=" + tintIslandIcon
+                + " expandIslandOnClick=" + expandIslandOnClick
                 + " forcePackages=" + islandForcePackages
                 + " islandSeparator=" + displaySeparator(generalSeparator)
                 + " islandSideSeparator=" + displaySeparator(sideSeparator);

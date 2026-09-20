@@ -18,13 +18,17 @@ final class SettingsContract {
     static final int HOOK_MODE = 13;
     static final int HIDE_NOTIFICATION_ICONS = 14;
     static final int SHOW_FOCUS_DIVIDER = 15;
+    static final int SHOW_ISLAND_ICON = 16;
+    static final int TINT_ISLAND_ICON = 17;
+    static final int EXPAND_ISLAND_ON_CLICK = 18;
 
     static final String[] COLUMNS = {
             "limit_text_width", "text_width_dp", "marquee_delay_ms", "compat_retry",
             "island_compat", "island_separator", "allow_focus_click",
             "island_general_separator", "island_side_separator", "island_force_packages",
             "disable_island_property", "disable_island_feature_cache", "marquee_bounce",
-            "hook_mode", "hide_notification_icons", "show_focus_divider"
+            "hook_mode", "hide_notification_icons", "show_focus_divider",
+            "show_island_icon", "tint_island_icon", "expand_island_on_click"
     };
 
     private SettingsContract() {

@@ -41,9 +41,20 @@ public class InputLimitsTest {
             packages.add("com.example.app" + index);
         }
         Set<String> sanitized = InputLimits.sanitizePackages(packages);
-        assertTrue(sanitized.contains("com.example.one"));
+        assertTrue(sanitized.contains("com.example.app0"));
         assertFalse(sanitized.contains(""));
         assertEquals(InputLimits.MAX_FORCE_PACKAGES, sanitized.size());
+    }
+
+    @Test
+    public void moreThanLegacy256PackagesRemainAvailable() {
+        Set<String> packages = new LinkedHashSet<>();
+        for (int index = 0; index < 300; index++) {
+            packages.add("com.example.installed" + index);
+        }
+        Set<String> sanitized = InputLimits.sanitizePackages(packages);
+        assertEquals(300, sanitized.size());
+        assertTrue(sanitized.contains("com.example.installed299"));
     }
 
     private static String repeat(char value, int count) {

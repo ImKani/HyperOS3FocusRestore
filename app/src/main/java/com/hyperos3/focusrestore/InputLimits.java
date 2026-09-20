@@ -10,7 +10,7 @@ final class InputLimits {
     static final int MAX_PAYLOAD_UTF8_BYTES = 512 * 1024;
     static final int MAX_OUTPUT_CHARS = 4096;
     static final int MAX_SEPARATOR_CHARS = 32;
-    static final int MAX_FORCE_PACKAGES = 256;
+    static final int MAX_FORCE_PACKAGES = 4096;
     static final int MAX_PACKAGE_NAME_CHARS = 255;
 
     private InputLimits() {
@@ -50,12 +50,17 @@ final class InputLimits {
 
     static Set<String> sanitizePackages(Set<String> packages) {
         if (packages == null || packages.isEmpty()) return Collections.emptySet();
-        LinkedHashSet<String> result = new LinkedHashSet<>();
+        java.util.ArrayList<String> normalized = new java.util.ArrayList<>();
         for (String value : packages) {
             if (value == null) continue;
             String trimmed = value.trim();
             if (trimmed.length() == 0 || trimmed.length() > MAX_PACKAGE_NAME_CHARS) continue;
-            result.add(trimmed);
+            normalized.add(trimmed);
+        }
+        java.util.Collections.sort(normalized);
+        LinkedHashSet<String> result = new LinkedHashSet<>();
+        for (String value : normalized) {
+            result.add(value);
             if (result.size() >= MAX_FORCE_PACKAGES) break;
         }
         return result.isEmpty() ? Collections.<String>emptySet()

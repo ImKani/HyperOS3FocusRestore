@@ -13,10 +13,14 @@ public class SettingsContractTest {
                 "island_compat", "island_separator", "allow_focus_click",
                 "island_general_separator", "island_side_separator", "island_force_packages",
                 "disable_island_property", "disable_island_feature_cache", "marquee_bounce",
-                "hook_mode", "hide_notification_icons", "show_focus_divider"
+                "hook_mode", "hide_notification_icons", "show_focus_divider",
+                "show_island_icon", "tint_island_icon", "expand_island_on_click"
         }, SettingsContract.COLUMNS);
         assertEquals(13, SettingsContract.HOOK_MODE);
         assertEquals(14, SettingsContract.HIDE_NOTIFICATION_ICONS);
         assertEquals(15, SettingsContract.SHOW_FOCUS_DIVIDER);
+        assertEquals(16, SettingsContract.SHOW_ISLAND_ICON);
+        assertEquals(17, SettingsContract.TINT_ISLAND_ICON);
+        assertEquals(18, SettingsContract.EXPAND_ISLAND_ON_CLICK);
     }
 }
