@@ -24,7 +24,7 @@ GitHub：<https://github.com/ImKani/FocusRestore>
 
 ## 当前版本
 
-版本：`0.13.24`
+版本：`0.13.25`
 
 本版本在 0.13.22 启动热修基础上完善白名单、图标、点击实验功能与设置布局：
 
@@ -46,8 +46,9 @@ GitHub：<https://github.com/ImKani/FocusRestore>
 - 焦点通知宽度限制与滚动方向控制
 - 设置页重新按系统版本、转换、显示、图标、点击、滚动与兼容功能分组
 - Release 恢复旧版通知点击实验开关；新增点击后复用系统超级岛触摸链路展开通知的实验开关，二者互斥且旧版优先
+- 0.13.25 根据真机日志排除边缘 cutout 坐标，并以真实 80ms 间隔发送超级岛 DOWN/UP；点击展开仍属于需真机确认的实验能力
 - 超级岛图标显示默认关闭，图标反色默认开启且可独立配置；岛图标添加仅沿非透明边缘的黑色轮廓
-- 默认使用应用图标兜底且保持原色；可实验性改用通知 smallIcon 兜底，smallIcon 不描边但可跟随状态栏反色
+- 默认使用应用图标兜底且保持原色；可实验性改用通知 smallIcon 兜底，smallIcon 不描边但可跟随状态栏反色；0.13.25 修复样式器把不可变 Bitmap 交给 Canvas 导致 OS4 图标被移除的问题
 - OS3/OS4 文本焦点图标统一缩至 13dp，与 14sp 文字协调
 - 修复 0.13.21 在 LSPosed 入口对象构造阶段依赖主 Looper，导致 OS3/OS4 全部 Hook 未安装的问题；主线程 Handler 只在 SystemUI `Application.attach()` 后创建
 - 两条超级岛屏蔽路径在两种模式下均保持启用
@@ -144,15 +145,15 @@ Android Gradle Plugin 8.7.3
 构建 debug 或 release 变体，APK 输出路径：
 
 ```text
-app/build/outputs/apk/debug/FocusRestore-0.13.24-debug.apk
-app/build/outputs/apk/release/FocusRestore-0.13.24-release.apk
+app/build/outputs/apk/debug/FocusRestore-0.13.25-debug.apk
+app/build/outputs/apk/release/FocusRestore-0.13.25-release.apk
 ```
 
 模块不声明网络、存储或后台服务权限。为显示白名单应用列表，Manifest 声明包可见性相关的 `QUERY_ALL_PACKAGES` 和小米系统权限 `com.android.permission.GET_INSTALLED_APPS`；关于项目按钮通过系统浏览器打开外部链接，网络访问由浏览器处理。配置 XML 保持私有，但导出的只读 Provider 必须允许不同签名的 SystemUI 查询，因此其他应用也可能读取模式、白名单等配置；Provider 不提供写接口。
 
 ## 安装和作用域
 
-1. 安装 `FocusRestore-0.13.24-release.apk` 或 `FocusRestore-0.13.24-debug.apk`。
+1. 安装 `FocusRestore-0.13.25-release.apk` 或 `FocusRestore-0.13.25-debug.apk`。
 2. 在 LSPosed 中启用本模块。
 3. 作用域应只有：
 

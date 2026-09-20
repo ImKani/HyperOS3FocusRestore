@@ -1010,7 +1010,7 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
             float y = location[1] + source.getHeight() / 2f;
             long time = SystemClock.uptimeMillis();
             down = MotionEvent.obtain(time, time, MotionEvent.ACTION_DOWN, x, y, 0);
-            up = MotionEvent.obtain(time, time + 32L, MotionEvent.ACTION_UP, x, y, 0);
+            up = MotionEvent.obtain(time, time + 80L, MotionEvent.ACTION_UP, x, y, 0);
             log(mode + " experimental island tap coordinates key=" + key
                     + " sourceX=" + sourceX + " islandX=" + x + " y=" + y);
             if (dispatchViaShadeTouchHandler(down, up, key, mode)) return;
@@ -1055,26 +1055,27 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
     }
 
     private float resolveIslandTouchX(View source) {
+        float displayCenter = source.getResources().getDisplayMetrics().widthPixels / 2f;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             try {
                 WindowInsets insets = source.getRootWindowInsets();
                 DisplayCutout cutout = insets == null ? null : insets.getDisplayCutout();
                 if (cutout != null) {
-                    Rect best = null;
+                    java.util.ArrayList<Float> centers = new java.util.ArrayList<>();
                     for (Rect rect : cutout.getBoundingRects()) {
-                        if (rect == null || rect.isEmpty()) continue;
-                        if (best == null || rect.top < best.top
-                                || (rect.top == best.top && rect.width() > best.width())) {
-                            best = rect;
-                        }
+                        if (rect != null && !rect.isEmpty()) centers.add(rect.exactCenterX());
                     }
-                    if (best != null) return best.exactCenterX();
+                    float[] values = new float[centers.size()];
+                    for (int index = 0; index < centers.size(); index++) {
+                        values[index] = centers.get(index);
+                    }
+                    return IslandTouchCoordinates.chooseX(displayCenter * 2f, values);
                 }
             } catch (Throwable throwable) {
                 error("resolve island cutout center", throwable);
             }
         }
-        return source.getResources().getDisplayMetrics().widthPixels / 2f;
+        return displayCenter;
     }
 
     private boolean dispatchViaShadeTouchHandler(MotionEvent down, MotionEvent up,
@@ -1107,10 +1108,25 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
                     });
             Object downResult = XposedHelpers.callMethod(shadeHandler,
                     "handleExternalTouch", down, "status_bar", noOpCallback);
-            Object upResult = XposedHelpers.callMethod(shadeHandler,
-                    "handleExternalTouch", up, "status_bar", noOpCallback);
+            Handler handler = mainHandler;
+            if (handler == null) return false;
+            final Object delayedShadeHandler = shadeHandler;
+            final Object delayedCallback = noOpCallback;
+            final MotionEvent delayedUp = MotionEvent.obtain(up);
+            handler.postDelayed(() -> {
+                try {
+                    Object upResult = XposedHelpers.callMethod(delayedShadeHandler,
+                            "handleExternalTouch", delayedUp, "status_bar", delayedCallback);
+                    log(mode + " experimental island tap key=" + key
+                            + " path=shade up=" + upResult + " delayMs=80");
+                } catch (Throwable throwable) {
+                    error(mode + " experimental island up key=" + key, throwable);
+                } finally {
+                    delayedUp.recycle();
+                }
+            }, 80L);
             log(mode + " experimental island tap key=" + key
-                    + " path=shade down=" + downResult + " up=" + upResult);
+                    + " path=shade down=" + downResult + " up=scheduled");
             return true;
         } catch (Throwable throwable) {
             error(mode + " experimental shade tap fallback key=" + key, throwable);

@@ -57,7 +57,8 @@ final class FocusIconStyler {
                 }
             }
         }
-        Bitmap styled = Bitmap.createBitmap(output, size, size, Bitmap.Config.ARGB_8888);
+        Bitmap styled = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+        styled.setPixels(output, 0, size, 0, 0, size, size);
         Canvas canvas = new Canvas(styled);
         if (tint) {
             int color = tintColor & 0x00ffffff;
