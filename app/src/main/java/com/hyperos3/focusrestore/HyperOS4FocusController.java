@@ -568,7 +568,8 @@ final class HyperOS4FocusController {
                     + " hideNotificationIcons=" + settings.hideNotificationIcons
                     + " showFocusDivider=" + settings.showFocusDivider
                     + " tint=0x" + Integer.toHexString(currentTint)
-                    + " click=" + settings.allowFocusClick);
+                    + " legacyClick=" + settings.allowFocusClick
+                    + " expandIslandClick=" + settings.expandIslandOnClick);
         }
     }
 
@@ -672,7 +673,7 @@ final class HyperOS4FocusController {
         if (host != null) {
             applyTint(host);
             host.updateDividerTint();
-            host.refreshTintedIslandIcon();
+            host.refreshTintedIcon();
         }
         logger.log("OS4 tint updated source=" + source + " tint=0x"
                 + Integer.toHexString(tint));
@@ -842,7 +843,7 @@ final class HyperOS4FocusController {
             Icon selectedIcon = usingDarkIcon ? item.iconDark : item.icon;
             if (selectedIcon != null && nextContent instanceof TextView) {
                 try {
-                    currentIconSizeDp = 15;
+                    currentIconSizeDp = 13;
                     int iconSize = Math.max(1, Math.round(currentIconSizeDp * density));
                     int iconGap = Math.max(1, Math.round(4f * density));
                     iconView = new ImageView(getContext());
@@ -962,12 +963,11 @@ final class HyperOS4FocusController {
             if (divider != null) divider.setBackgroundColor(currentTint);
         }
 
-        void refreshTintedIslandIcon() {
-            if (iconView == null || currentIcon == null
-                    || !currentIslandIcon || !tintCurrentIcon) return;
+        void refreshTintedIcon() {
+            if (iconView == null || currentIcon == null || !tintCurrentIcon) return;
             try {
                 FocusIconStyler.Result result = FocusIconStyler.load(getContext(), currentIcon,
-                        true, true, currentTint, currentIconSizeDp);
+                        currentIslandIcon, true, currentTint, currentIconSizeDp);
                 if (result != null) iconView.setImageDrawable(result.drawable);
             } catch (Throwable throwable) {
                 logger.error("OS4 refresh tinted island icon", throwable);

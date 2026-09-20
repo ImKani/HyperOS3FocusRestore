@@ -23,6 +23,7 @@ final class HookSettings {
     final boolean showIslandIcon;
     final boolean tintIslandIcon;
     final boolean expandIslandOnClick;
+    final boolean useSmallIconFallback;
     final String generalSeparator;
     final String sideSeparator;
     final Set<String> islandForcePackages;
@@ -33,7 +34,7 @@ final class HookSettings {
                          boolean allowFocusClick, boolean hideNotificationIcons,
                          boolean showFocusDivider, boolean showIslandIcon,
                          boolean tintIslandIcon, boolean expandIslandOnClick,
-                         String generalSeparator,
+                         boolean useSmallIconFallback, String generalSeparator,
                          String sideSeparator, Set<String> forcePackages) {
         this.hookMode = FocusRestoreSettings.normalizeHookMode(hookMode);
         this.limitWidth = limitWidth;
@@ -51,6 +52,7 @@ final class HookSettings {
         this.showIslandIcon = showIslandIcon;
         this.tintIslandIcon = tintIslandIcon;
         this.expandIslandOnClick = allowFocusClick ? false : expandIslandOnClick;
+        this.useSmallIconFallback = useSmallIconFallback;
         this.generalSeparator = InputLimits.limitSeparator(generalSeparator == null
                 ? FocusRestoreSettings.DEFAULT_ISLAND_SEPARATOR : generalSeparator);
         this.sideSeparator = InputLimits.limitSeparator(sideSeparator == null
@@ -72,6 +74,7 @@ final class HookSettings {
                 FocusRestoreSettings.DEFAULT_SHOW_ISLAND_ICON,
                 FocusRestoreSettings.DEFAULT_TINT_ISLAND_ICON,
                 FocusRestoreSettings.DEFAULT_EXPAND_ISLAND_ON_CLICK,
+                FocusRestoreSettings.DEFAULT_USE_SMALL_ICON_FALLBACK,
                 FocusRestoreSettings.DEFAULT_ISLAND_SEPARATOR, FocusRestoreSettings.DEFAULT_ISLAND_SEPARATOR,
                 Collections.<String>emptySet());
     }
@@ -144,13 +147,17 @@ final class HookSettings {
                 SettingsContract.EXPAND_ISLAND_ON_CLICK)
                 ? cursor.getInt(SettingsContract.EXPAND_ISLAND_ON_CLICK) != 0
                 : FocusRestoreSettings.DEFAULT_EXPAND_ISLAND_ON_CLICK;
+        boolean useSmallIconFallback = hasValue(cursor, columnCount,
+                SettingsContract.USE_SMALL_ICON_FALLBACK)
+                ? cursor.getInt(SettingsContract.USE_SMALL_ICON_FALLBACK) != 0
+                : FocusRestoreSettings.DEFAULT_USE_SMALL_ICON_FALLBACK;
 
         return new HookSettings(hookMode, limitWidth, widthDp, marqueeDelayMs,
                 compatRetry, marqueeBounce,
                 islandCompat, disableIslandProperty, disableIslandFeatureCache,
                 allowFocusClick, hideNotificationIcons, showFocusDivider,
                 showIslandIcon, tintIslandIcon, expandIslandOnClick,
-                generalSeparator, sideSeparator, forcePackages);
+                useSmallIconFallback, generalSeparator, sideSeparator, forcePackages);
     }
 
     String describe() {
@@ -166,6 +173,7 @@ final class HookSettings {
                 + " showIslandIcon=" + showIslandIcon
                 + " tintIslandIcon=" + tintIslandIcon
                 + " expandIslandOnClick=" + expandIslandOnClick
+                + " useSmallIconFallback=" + useSmallIconFallback
                 + " forcePackages=" + islandForcePackages
                 + " islandSeparator=" + displaySeparator(generalSeparator)
                 + " islandSideSeparator=" + displaySeparator(sideSeparator);

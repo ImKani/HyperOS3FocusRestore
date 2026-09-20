@@ -24,7 +24,7 @@ GitHub：<https://github.com/ImKani/FocusRestore>
 
 ## 当前版本
 
-版本：`0.13.23`
+版本：`0.13.24`
 
 本版本在 0.13.22 启动热修基础上完善白名单、图标、点击实验功能与设置布局：
 
@@ -46,11 +46,12 @@ GitHub：<https://github.com/ImKani/FocusRestore>
 - 焦点通知宽度限制与滚动方向控制
 - 设置页重新按系统版本、转换、显示、图标、点击、滚动与兼容功能分组
 - Release 恢复旧版通知点击实验开关；新增点击后复用系统超级岛触摸链路展开通知的实验开关，二者互斥且旧版优先
-- 超级岛图标显示和反色改为两个默认关闭的实验开关；岛图标添加仅沿非透明边缘的黑色轮廓，通知 small icon 兜底不加轮廓且不反色
-- OS4 文字焦点图标由 18dp 调整为 15dp，与 14sp 文字协调
+- 超级岛图标显示默认关闭，图标反色默认开启且可独立配置；岛图标添加仅沿非透明边缘的黑色轮廓
+- 默认使用应用图标兜底且保持原色；可实验性改用通知 smallIcon 兜底，smallIcon 不描边但可跟随状态栏反色
+- OS3/OS4 文本焦点图标统一缩至 13dp，与 14sp 文字协调
 - 修复 0.13.21 在 LSPosed 入口对象构造阶段依赖主 Looper，导致 OS3/OS4 全部 Hook 未安装的问题；主线程 Handler 只在 SystemUI `Application.attach()` 后创建
 - 两条超级岛屏蔽路径在两种模式下均保持启用
-- 转换超级岛时优先复用 `miui.focus.pics` 中由小岛/大岛 JSON 引用的图标；OS4 无岛图标时使用通知 small icon，OS3 写回并在 Bean 复用时恢复 ROM 原图标
+- 转换超级岛时可选复用 `miui.focus.pics` 中由小岛/大岛 JSON 引用的图标；无岛图标时默认使用应用图标，实验开关开启后优先使用通知 smallIcon；OS3 写回并在 Bean 复用时恢复 ROM 原图标
 - OS3 关闭宽度限制时恢复各 View 的最新 ROM 原值；未挂载文本使用有界 attach 等待启动跑马灯
 - OS3 已知 RemoteViews 绑定异常按通知降级为文本或丢弃坏候选，未知异常保持原样并完整记录
 - OS4 合并过期渲染任务，以 Pipeline、状态栏 Host、DarkReceiver 和候选代次隔离旧回调
@@ -77,7 +78,7 @@ Hook 入口：com.hyperos3.focusrestore.HyperOS3FocusRestoreHook
 - 提供两个 HyperOS 4 专用开关：“焦点通知隐藏其他图标”和“显示焦点通知分隔竖线”，均默认开启；选择 HyperOS 3 时保留其设置值但在界面中浅色禁用。
 - 隐藏图标只影响左侧通知图标容器；锁屏/解锁时若 ROM 请求恢复可见，模块会记录该最新请求并继续隐藏，焦点消失后恢复 SystemUI 最新期望的 visibility。分隔竖线固定在内容左侧并跟随状态栏时间反色。
 - 提供滚动方向开关：开启“往返滚动”时内容左右往返移动，关闭时单向滚动循环。可配合“兼容重试模式”使用，解决某些 ROM 滚动停止的问题。
-- 默认禁用所有焦点通知点击。高级页可二选一开启“旧版打开通知内容”或“点击后展开超级岛通知”；若存储异常导致两项同时开启，运行时只使用旧版点击。两项均为实验功能。
+- 默认禁用所有焦点通知点击。高级页可二选一开启“旧版打开通知内容”或“点击后展开超级岛通知”；实验展开把触摸坐标优先映射到顶部摄像头开孔中心，无开孔信息时回退屏幕顶部中央的岛区域。若存储异常导致两项同时开启，运行时只使用旧版点击。两项均为实验功能。
 - 模块始终尝试关闭 HyperOS 超级岛显示路径，避免其占用状态栏区域。
 - 本模块不适配或隐藏 MIUIStrongToast（灵动舞台），需要隐藏请使用其他专用工具。
 - 模块仅作用于 `com.android.systemui`，不要求 KernelSU 模块。
@@ -143,15 +144,15 @@ Android Gradle Plugin 8.7.3
 构建 debug 或 release 变体，APK 输出路径：
 
 ```text
-app/build/outputs/apk/debug/FocusRestore-0.13.23-debug.apk
-app/build/outputs/apk/release/FocusRestore-0.13.23-release.apk
+app/build/outputs/apk/debug/FocusRestore-0.13.24-debug.apk
+app/build/outputs/apk/release/FocusRestore-0.13.24-release.apk
 ```
 
 模块不声明网络、存储或后台服务权限。为显示白名单应用列表，Manifest 声明包可见性相关的 `QUERY_ALL_PACKAGES` 和小米系统权限 `com.android.permission.GET_INSTALLED_APPS`；关于项目按钮通过系统浏览器打开外部链接，网络访问由浏览器处理。配置 XML 保持私有，但导出的只读 Provider 必须允许不同签名的 SystemUI 查询，因此其他应用也可能读取模式、白名单等配置；Provider 不提供写接口。
 
 ## 安装和作用域
 
-1. 安装 `FocusRestore-0.13.23-release.apk` 或 `FocusRestore-0.13.23-debug.apk`。
+1. 安装 `FocusRestore-0.13.24-release.apk` 或 `FocusRestore-0.13.24-debug.apk`。
 2. 在 LSPosed 中启用本模块。
 3. 作用域应只有：
 

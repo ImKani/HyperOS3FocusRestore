@@ -14,7 +14,8 @@ public class SettingsContractTest {
                 "island_general_separator", "island_side_separator", "island_force_packages",
                 "disable_island_property", "disable_island_feature_cache", "marquee_bounce",
                 "hook_mode", "hide_notification_icons", "show_focus_divider",
-                "show_island_icon", "tint_island_icon", "expand_island_on_click"
+                "show_island_icon", "tint_island_icon", "expand_island_on_click",
+                "use_small_icon_fallback"
         }, SettingsContract.COLUMNS);
         assertEquals(13, SettingsContract.HOOK_MODE);
         assertEquals(14, SettingsContract.HIDE_NOTIFICATION_ICONS);
@@ -22,5 +23,6 @@ public class SettingsContractTest {
         assertEquals(16, SettingsContract.SHOW_ISLAND_ICON);
         assertEquals(17, SettingsContract.TINT_ISLAND_ICON);
         assertEquals(18, SettingsContract.EXPAND_ISLAND_ON_CLICK);
+        assertEquals(19, SettingsContract.USE_SMALL_ICON_FALLBACK);
     }
 }

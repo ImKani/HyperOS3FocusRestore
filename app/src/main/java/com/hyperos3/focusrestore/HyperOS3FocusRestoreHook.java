@@ -5,6 +5,8 @@ import android.app.Application;
 import android.app.Notification;
 import android.app.PendingIntent;
 import android.content.Context;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -21,8 +23,10 @@ import android.text.TextUtils;
 import android.util.Log;
 import android.widget.RemoteViews;
 import android.widget.TextView;
+import android.view.DisplayCutout;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.WindowInsets;
 import android.view.ViewGroup;
 import android.view.ViewParent;
 import android.view.animation.LinearInterpolator;
@@ -1001,11 +1005,14 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
         try {
             int[] location = new int[2];
             source.getLocationOnScreen(location);
-            float x = location[0] + source.getWidth() / 2f;
+            float sourceX = location[0] + source.getWidth() / 2f;
+            float x = resolveIslandTouchX(source);
             float y = location[1] + source.getHeight() / 2f;
             long time = SystemClock.uptimeMillis();
             down = MotionEvent.obtain(time, time, MotionEvent.ACTION_DOWN, x, y, 0);
             up = MotionEvent.obtain(time, time + 32L, MotionEvent.ACTION_UP, x, y, 0);
+            log(mode + " experimental island tap coordinates key=" + key
+                    + " sourceX=" + sourceX + " islandX=" + x + " y=" + y);
             if (dispatchViaShadeTouchHandler(down, up, key, mode)) return;
 
             Class<?> dependencyClass = FocusReflection.findClass(classLoader,
@@ -1045,6 +1052,29 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
             if (down != null) down.recycle();
             if (up != null) up.recycle();
         }
+    }
+
+    private float resolveIslandTouchX(View source) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            try {
+                WindowInsets insets = source.getRootWindowInsets();
+                DisplayCutout cutout = insets == null ? null : insets.getDisplayCutout();
+                if (cutout != null) {
+                    Rect best = null;
+                    for (Rect rect : cutout.getBoundingRects()) {
+                        if (rect == null || rect.isEmpty()) continue;
+                        if (best == null || rect.top < best.top
+                                || (rect.top == best.top && rect.width() > best.width())) {
+                            best = rect;
+                        }
+                    }
+                    if (best != null) return best.exactCenterX();
+                }
+            } catch (Throwable throwable) {
+                error("resolve island cutout center", throwable);
+            }
+        }
+        return source.getResources().getDisplayMetrics().widthPixels / 2f;
     }
 
     private boolean dispatchViaShadeTouchHandler(MotionEvent down, MotionEvent up,
@@ -1347,23 +1377,23 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
 
     private void applyConvertedBeanIcon(Object bean, OriginalBeanState state,
                                         FocusData data, String stage) {
-        SelectedFocusIcon light = selectFocusIcon(data.notification, data.islandParam,
-                false, false);
+        SelectedFocusIcon light = selectFocusIcon(data.notification, data.islandParam, data.packageName,
+                false, true);
         if (light == null) {
             restoreConvertedBeanIcon(bean, state, stage);
             return;
         }
         if (systemUiContext == null) return;
-        SelectedFocusIcon dark = selectFocusIcon(data.notification, data.islandParam,
-                true, false);
+        SelectedFocusIcon dark = selectFocusIcon(data.notification, data.islandParam, data.packageName,
+                true, true);
         if (dark == null) dark = light;
         final FocusIconStyler.Result styledLight;
         final FocusIconStyler.Result styledDark;
         try {
             styledLight = FocusIconStyler.load(systemUiContext, light.icon,
-                    light.islandIcon, light.tint, Color.WHITE, 18);
+                    light.islandIcon, light.tint, Color.WHITE, 13);
             styledDark = FocusIconStyler.load(systemUiContext, dark.icon,
-                    dark.islandIcon, dark.tint, Color.BLACK, 18);
+                    dark.islandIcon, dark.tint, Color.BLACK, 13);
             if (styledLight == null || styledDark == null) {
                 log(stage + " island focus icon load returned null package=" + data.packageName
                         + " lightType=" + light.icon.getType()
@@ -1526,7 +1556,8 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
     }
 
     private SelectedFocusIcon selectFocusIcon(Notification notification, String islandParam,
-                                                boolean dark, boolean allowSmallFallback) {
+                                                String packageName, boolean dark,
+                                                boolean allowFallback) {
         if (notification == null) return null;
         Bundle extras = notification.extras;
         Bundle pictures = extras == null ? null : extras.getBundle("miui.focus.pics");
@@ -1552,10 +1583,30 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
                     currentSettings.tintIslandIcon, true,
                     "tickerLight:" + lightReference);
         }
-        if (!allowSmallFallback) return null;
-        icon = notification.getSmallIcon();
+        if (!allowFallback) return null;
+        if (currentSettings.useSmallIconFallback) {
+            icon = notification.getSmallIcon();
+            if (icon != null) return new SelectedFocusIcon(icon,
+                    currentSettings.tintIslandIcon, false, "notificationSmallIcon");
+        }
+        icon = applicationIcon(packageName);
         return icon == null ? null : new SelectedFocusIcon(icon, false, false,
-                "notificationSmallIcon");
+                "applicationIcon");
+    }
+
+    private Icon applicationIcon(String packageName) {
+        Context context = systemUiContext;
+        if (context == null || TextUtils.isEmpty(packageName)) return null;
+        try {
+            ApplicationInfo info = context.getPackageManager().getApplicationInfo(packageName, 0);
+            return info.icon == 0 ? null : Icon.createWithResource(packageName, info.icon);
+        } catch (PackageManager.NameNotFoundException exception) {
+            log("application icon unavailable package=" + packageName);
+            return null;
+        } catch (Throwable throwable) {
+            error("load application icon package=" + packageName, throwable);
+            return null;
+        }
     }
 
     private static Icon iconFromBundle(Bundle pictures, String reference) {
@@ -1877,9 +1928,9 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
                         + " " + data.summary());
                 return null;
             }
-            SelectedFocusIcon focusIcon = selectFocusIcon(notification, data.islandParam,
+            SelectedFocusIcon focusIcon = selectFocusIcon(notification, data.islandParam, data.packageName,
                     false, true);
-            SelectedFocusIcon focusIconDark = selectFocusIcon(notification, data.islandParam,
+            SelectedFocusIcon focusIconDark = selectFocusIcon(notification, data.islandParam, data.packageName,
                     true, true);
             log("OS4 native focus icon key=" + key + " light="
                     + (focusIcon == null ? "none" : focusIcon.source) + " dark="
@@ -1916,9 +1967,9 @@ public final class HyperOS3FocusRestoreHook implements IXposedHookLoadPackage {
             source = "island:" + islandText.source;
         }
         SelectedFocusIcon focusIcon = selectFocusIcon(notification, data.islandParam,
-                false, true);
+                data.packageName, false, true);
         SelectedFocusIcon focusIconDark = selectFocusIcon(notification, data.islandParam,
-                true, true);
+                data.packageName, true, true);
         log("OS4 island focus icon key=" + key + " light="
                 + (focusIcon == null ? "none" : focusIcon.source) + " dark="
                 + (focusIconDark == null ? "none" : focusIconDark.source));
